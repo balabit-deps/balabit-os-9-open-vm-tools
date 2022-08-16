@@ -1,0 +1,47 @@
+Description: Avoid FTBFS with glibc 2.35
+ Due to changes in libc6 a build that uses
+  1. LTO: -flto=auto -ffat-lto-objects -flto=auto -ffat-lto-objects
+  2. Optimiziation with gcc: -O2
+  3. Gcc 11.2.0
+ Will hit an build error as the linking step will now detect a potential
+ -Wstringop-overflow issue.
+ Reported to upstream and for now ignored in the Ubuntu build.
+Forwarded: not-needed
+X-Not-Forwarded-Reason: we'd want a real fix instead of just ignoring the error
+Author: Christian Ehrhardt <christian.ehrhardt@canonical.com>
+Bug-Ubuntu: https://bugs.launchpad.net/bugs/1960224
+Bug-Upstream: https://github.com/vmware/open-vm-tools/issues/570
+Last-Update: 2022-02-07
+
+---
+ open-vm-tools/lib/asyncsocket/asyncsocket.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/open-vm-tools/lib/asyncsocket/asyncsocket.c b/open-vm-tools/lib/asyncsocket/asyncsocket.c
+index 05147d2e..546932ec 100644
+--- a/open-vm-tools/lib/asyncsocket/asyncsocket.c
++++ b/open-vm-tools/lib/asyncsocket/asyncsocket.c
+@@ -2850,6 +2850,10 @@ AsyncTCPSocketPollWork(AsyncTCPSocket **asock,     // IN:
+          pfd[i].events = read ? POLLIN : POLLOUT;
+       }
+ 
++#if defined(__GNUC__) && (__GNUC__ >= 11)
++#pragma GCC diagnostic push
++#pragma GCC diagnostic ignored "-Wstringop-overflow"
++#endif
+       if (parentSock != NULL) {
+          AsyncTCPSocketUnlock(parentSock);
+          retval = poll(pfd, numSock, timeoutMS);
+@@ -2863,6 +2867,9 @@ AsyncTCPSocketPollWork(AsyncTCPSocket **asock,     // IN:
+             AsyncTCPSocketLock(asock[i]);
+          }
+       }
++#if defined(__GNUC__) && (__GNUC__ >= 11)
++#pragma GCC diagnostic pop
++#endif
+ #else
+       tv.tv_sec = timeoutMS / 1000;
+       tv.tv_usec = (timeoutMS % 1000) * 1000;
+-- 
+2.34.1
+
