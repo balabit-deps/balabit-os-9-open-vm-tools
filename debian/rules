@@ -21,6 +21,7 @@ override_dh_auto_configure:
 			--enable-xmlsec1 \
 			--with-gtk3  \
 			--enable-servicediscovery \
+			--enable-salt-minion \
 			--with-fuse=fuse3 \
 			CFLAGS="-fPIC -Wno-error=deprecated-declarations -Wno-error=address-of-packed-member -Wno-nonnull $(CFLAGS)" \
 			CUSTOM_PROCPS_NAME=procps
@@ -82,6 +83,16 @@ override_dh_auto_install:
 	mkdir -p debian/open-vm-tools-sdmp/usr/lib/$(DEB_HOST_MULTIARCH)/open-vm-tools/serviceDiscovery/scripts/
 	mv debian/open-vm-tools/usr/lib/$(DEB_HOST_MULTIARCH)/open-vm-tools/serviceDiscovery/scripts/* debian/open-vm-tools-sdmp/usr/lib/$(DEB_HOST_MULTIARCH)/open-vm-tools/serviceDiscovery/scripts/
 	rm -rf debian/open-vm-tools/usr/lib/$(DEB_HOST_MULTIARCH)/open-vm-tools/serviceDiscovery/
+
+	# moving open-vm-tools-containerinfo files
+	mkdir -p debian/open-vm-tools-containerinfo/usr/lib/$(DEB_HOST_MULTIARCH)/open-vm-tools/plugins/containerinfo/
+	mv debian/open-vm-tools/usr/lib/$(DEB_HOST_MULTIARCH)/open-vm-tools/plugins/vmsvc/libcontainerInfo.so debian/open-vm-tools-containerinfo/usr/lib/$(DEB_HOST_MULTIARCH)/open-vm-tools/plugins/containerinfo/
+
+ifneq (,$(findstring $(DEB_HOST_ARCH), amd64))
+	# moving open-vm-tools-salt-minion files
+	mkdir -p debian/open-vm-tools-salt-minion/usr/lib/$(DEB_HOST_MULTIARCH)/open-vm-tools/componentMgr/saltMinion/
+	mv debian/open-vm-tools/usr/lib/$(DEB_HOST_MULTIARCH)/open-vm-tools/componentMgr/saltMinion/svtminion.sh debian/open-vm-tools-salt-minion/usr/lib/$(DEB_HOST_MULTIARCH)/open-vm-tools/componentMgr/saltMinion/
+endif
 
 override_dh_gencontrol:
 	if [ "${VENDOR}" = "UBUNTU" ]; \

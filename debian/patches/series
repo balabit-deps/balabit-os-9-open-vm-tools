@@ -1,5 +1,2 @@
 use-debian-pam
 debian/scsi-udev-rule
-Update-open-vm-tools-to-build-with-either-Fuse-3-or-2.patch
-libc-2.35-compat-FTBFS-fix.patch
-CVE-2022-31676.patch

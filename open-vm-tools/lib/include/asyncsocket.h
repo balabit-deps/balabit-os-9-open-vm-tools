@@ -1,5 +1,5 @@
 /*********************************************************
- * Copyright (C) 2003-2021 VMware, Inc. All rights reserved.
+ * Copyright (C) 2003-2022 VMware, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
@@ -439,6 +439,10 @@ typedef int (*AsyncWebSocketHandleUpgradeRequestFn) (AsyncSocket *asock,
                                                      const char *httpRequest,
                                                      char **httpResponse);
 
+typedef int (*AsyncWebSocketHandoffSocketFn) (AsyncSocket *asock, void *cbData,
+                                              void *buf, uint32 bufLen,
+                                              uint32 currentPos);
+
 /*
  * Listen on port and fire callback with new asock
  */
@@ -474,12 +478,22 @@ AsyncSocket *AsyncSocket_PrepareListenWebSocket(Bool useSSL,
                                                  void *clientData,
                                                  AsyncSocketPollParams *pollParams,
                                                  void *sslCtx,
-                                                 AsyncWebSocketHandleUpgradeRequestFn handleUpgradeRequestFn);
+                                                 AsyncWebSocketHandleUpgradeRequestFn handleUpgradeRequestFn,
+                                                 AsyncWebSocketHandoffSocketFn alpnCb,
+                                                 const char* alpn);
 AsyncSocket *AsyncSocket_RegisterListenWebSocket(AsyncSocket *asock,
                                                  const char *addrStr,
                                                  unsigned int port,
                                                  AsyncSocketPollParams *pollParams,
                                                  int *outError);
+AsyncSocket* AsyncSocket_UpgradeToWebSocket(AsyncSocket *asock,
+                                            const char *protocols[],
+                                            AsyncSocketConnectFn connectFn,
+                                            void *clientData,
+                                            Bool useSSL,
+                                            void *sslCtx,
+                                            AsyncWebSocketHandleUpgradeRequestFn handleUpgradeRequestFn,
+                                            int *outError);
 
 #ifndef _WIN32
 AsyncSocket *AsyncSocket_ListenWebSocketUDS(const char *pipeName,
@@ -561,6 +575,13 @@ AsyncSocket_CreateNamedPipe(const char *pipeName,
 AsyncSocket *
 AsyncSocket_AttachToNamedPipe(HANDLE handle, AsyncSocketPollParams *pollParams,
                               int *outError);
+
+/*
+ * Obtain the client process id of the given named pipe
+ */
+Bool
+AsyncSocket_GetNamedPipeClientProcessId(AsyncSocket* asock,
+                                        PULONG clientPid);
 #endif
 
 AsyncSocket *

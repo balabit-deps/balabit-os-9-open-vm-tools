@@ -1,5 +1,5 @@
 /*********************************************************
- * Copyright (C) 1998-2021 VMware, Inc. All rights reserved.
+ * Copyright (C) 1998-2022 VMware, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
@@ -72,8 +72,10 @@
 #if !defined(USING_AUTOCONF) || defined(HAVE_SYS_VFS_H)
 #include <sys/vfs.h>
 #endif
-#if !defined(sun) && !defined __ANDROID__ && (!defined(USING_AUTOCONF) || (defined(HAVE_SYS_IO_H) && defined(HAVE_SYS_SYSINFO_H)))
-#if defined(__i386__) || defined(__x86_64__) || defined(__arm__)
+#if !defined(sun) && !defined __ANDROID__ && (!defined(USING_AUTOCONF) || \
+                                              (defined(HAVE_SYS_IO_H) && \
+                                               defined(HAVE_SYS_SYSINFO_H)))
+#if defined(__i386__) || defined(__x86_64__)
 #include <sys/io.h>
 #else
 #define NO_IOPL
@@ -159,8 +161,8 @@ static Atomic_Ptr hostinfoOSVersion;
 
 #if !defined(__APPLE__) && !defined(VMX86_SERVER) && !defined(USERWORLD)
 typedef struct {
-   char *name;
-   char *scanString;
+   const char *name;
+   const char *scanString;
 } DistroNameScan;
 
 static const DistroNameScan lsbFields[] = {
@@ -180,8 +182,8 @@ static const DistroNameScan osReleaseFields[] = {
 };
 
 typedef struct {
-   char *name;
-   char *filename;
+   const char *name;
+   const char *filename;
 } DistroInfo;
 
 /*
@@ -777,36 +779,16 @@ HostinfoESX(struct utsname *buf)  // IN:
       minor = 0;
    }
 
-   switch (major) {
-   case 0:
-   case 1:
-   case 2:
-   case 3:
-   case 4:
+   if (major <= 4) {
       Str_Strcpy(osName, STR_OS_VMKERNEL, sizeof osName);
-      break;
-
-   case 5:
-      Str_Strcpy(osName, STR_OS_VMKERNEL "5", sizeof osName);
-      break;
-
-   case 6:
-      if (minor < 5) {
-         Str_Strcpy(osName, STR_OS_VMKERNEL "6", sizeof osName);
+   } else {
+      if (minor == 0) {
+         Str_Sprintf(osName, sizeof osName, "%s%d", STR_OS_VMKERNEL,
+                     major);
       } else {
-         Str_Strcpy(osName, STR_OS_VMKERNEL "65", sizeof osName);
+         Str_Sprintf(osName, sizeof osName, "%s%d%d", STR_OS_VMKERNEL,
+                     major, minor);
       }
-      break;
-
-   case 7:
-   default:
-      /*
-       * New osName are created IFF the VMX/monitor requires them (rare),
-       * not (simply) with every ESXi release.
-       */
-
-      Str_Strcpy(osName, STR_OS_VMKERNEL "7", sizeof osName);
-      break;
    }
 
    len = Str_Snprintf(osNameFull, sizeof osNameFull, "VMware ESXi %s",
@@ -903,7 +885,7 @@ static const char *
 HostinfoArchString(void)
 {
 #if defined(VM_ARM_ANY)
-   return "arm-";
+   return STR_OS_ARM_PREFIX;
 #elif defined(VM_X86_ANY)
    return "";
 #else
@@ -1174,18 +1156,18 @@ HostinfoSetRedHatShortName(const ShortNameSet *entry, // IN: Unused
 #define SUSE_SAP_LINUX "server for sap applications 12"
 
 static const ShortNameSet suseEnterpriseShortNameArray[] = {
-   {"desktop 10",    STR_OS_SLES "10",  HostinfoGenericSetShortName},
-   {"desktop 11",    STR_OS_SLES "11",  HostinfoGenericSetShortName},
-   {"desktop 12",    STR_OS_SLES "12",  HostinfoGenericSetShortName},
-   {"desktop 15",    STR_OS_SLES "15",  HostinfoGenericSetShortName},
-   {"desktop 16",    STR_OS_SLES "16",  HostinfoGenericSetShortName},
-   {"server 10",     STR_OS_SLES "10",  HostinfoGenericSetShortName},
-   {"server 11",     STR_OS_SLES "11",  HostinfoGenericSetShortName},
-   {"server 12",     STR_OS_SLES "12",  HostinfoGenericSetShortName},
-   {"server 15",     STR_OS_SLES "15",  HostinfoGenericSetShortName},
-   {"server 16",     STR_OS_SLES "16",  HostinfoGenericSetShortName},
-   {SUSE_SAP_LINUX,  STR_OS_SLES "12",  HostinfoGenericSetShortName},
-   {NULL,            NULL,              NULL} // MUST BE LAST
+   { "desktop 10",    STR_OS_SLES "10",  HostinfoGenericSetShortName },
+   { "desktop 11",    STR_OS_SLES "11",  HostinfoGenericSetShortName },
+   { "desktop 12",    STR_OS_SLES "12",  HostinfoGenericSetShortName },
+   { "desktop 15",    STR_OS_SLES "15",  HostinfoGenericSetShortName },
+   { "desktop 16",    STR_OS_SLES "16",  HostinfoGenericSetShortName },
+   { "server 10",     STR_OS_SLES "10",  HostinfoGenericSetShortName },
+   { "server 11",     STR_OS_SLES "11",  HostinfoGenericSetShortName },
+   { "server 12",     STR_OS_SLES "12",  HostinfoGenericSetShortName },
+   { "server 15",     STR_OS_SLES "15",  HostinfoGenericSetShortName },
+   { "server 16",     STR_OS_SLES "16",  HostinfoGenericSetShortName },
+   { SUSE_SAP_LINUX,  STR_OS_SLES "12",  HostinfoGenericSetShortName },
+   { NULL,            NULL,              NULL                        } // MUST BE LAST
 };
 
 
@@ -1196,9 +1178,9 @@ static const ShortNameSet suseEnterpriseShortNameArray[] = {
  */
 
 static const ShortNameSet suseShortNameArray[] = {
-   {"sun",           STR_OS_SUN_DESK,  HostinfoGenericSetShortName},
-   {"novell",        STR_OS_NOVELL,    HostinfoGenericSetShortName},
-   {NULL,            NULL,             NULL} // MUST BE LAST
+   { "sun",           STR_OS_SUN_DESK,     HostinfoGenericSetShortName },
+   { "novell",        STR_OS_NOVELL "9",   HostinfoGenericSetShortName },
+   { NULL,            NULL,                NULL                        } // MUST BE LAST
 };
 
 
@@ -1207,7 +1189,8 @@ static const ShortNameSet suseShortNameArray[] = {
  *
  * HostinfoSetSuseShortName --
  *
- *      Set the short name for the SUSE distros.
+ *      Set the short name for the SUSE distros. Due to ownership and naming
+ *      changes, other distros have to be "filtered" and named differently.
  *
  * Return value:
  *      TRUE    success
@@ -1253,13 +1236,15 @@ HostinfoSetSuseShortName(const ShortNameSet *entry, // IN:
 
 
 /*
- * Table mapping from distro name to the offically recognized shortname.
+ * Table mapping from distro name to the officially recognized shortname.
  *
- * Only distros that are officially supported by VMware are present in
- * this table. If you're not VMware, do not add anything to this table.
+ * WARNING: If you are not VMware, do not change this table. Values that are
+ * not recognized by the VMware host will be ignored. Any change here must
+ * be accompanied by additional changes to the host.
  *
- * A short name that is not officially supported by VMware will be ignored
- * by the rest of the software stack.
+ * If you are interested in extending this table, do not send a pull request.
+ * Instead, submit a request via the open-vm-tools github issue tracker
+ * https://github.com/vmware/open-vm-tools/issues.
  *
  * Some distros do not have a simple substitution and special logic is
  * necessary to handle distros that do not have simple substitutions.
@@ -1269,44 +1254,46 @@ HostinfoSetSuseShortName(const ShortNameSet *entry, // IN:
  */
 
 static const ShortNameSet shortNameArray[] = {
-/* Long distro name     Short distro name          Short name set function */
-{"amazon",              NULL,                      HostinfoSetAmazonShortName},
-{"annvix",              STR_OS_ANNVIX,             HostinfoGenericSetShortName},
-{"arch",                STR_OS_ARCH,               HostinfoGenericSetShortName},
-{"arklinux",            STR_OS_ARKLINUX,           HostinfoGenericSetShortName},
-{"asianux",             NULL,                      HostinfoSetAsianuxShortName},
-{"aurox",               STR_OS_AUROX,              HostinfoGenericSetShortName},
-{"black cat",           STR_OS_BLACKCAT,           HostinfoGenericSetShortName},
-{"centos",              NULL,                      HostinfoSetCentosShortName},
-{"cobalt",              STR_OS_COBALT,             HostinfoGenericSetShortName},
-{"conectiva",           STR_OS_CONECTIVA,          HostinfoGenericSetShortName},
-{"debian",              NULL,                      HostinfoSetDebianShortName},
-{"red hat",             NULL,                      HostinfoSetRedHatShortName},
+/* Long distro name      Short distro name          Short name set function */
+{ "almalinux",           STR_OS_ALMA_LINUX,         HostinfoGenericSetShortName },
+{ "amazon",              NULL,                      HostinfoSetAmazonShortName  },
+{ "annvix",              STR_OS_ANNVIX,             HostinfoGenericSetShortName },
+{ "arch",                STR_OS_ARCH,               HostinfoGenericSetShortName },
+{ "arklinux",            STR_OS_ARKLINUX,           HostinfoGenericSetShortName },
+{ "asianux",             NULL,                      HostinfoSetAsianuxShortName },
+{ "aurox",               STR_OS_AUROX,              HostinfoGenericSetShortName },
+{ "black cat",           STR_OS_BLACKCAT,           HostinfoGenericSetShortName },
+{ "centos",              NULL,                      HostinfoSetCentosShortName  },
+{ "cobalt",              STR_OS_COBALT,             HostinfoGenericSetShortName },
+{ "conectiva",           STR_OS_CONECTIVA,          HostinfoGenericSetShortName },
+{ "debian",              NULL,                      HostinfoSetDebianShortName  },
+{ "red hat",             NULL,                      HostinfoSetRedHatShortName  },
 /* Red Hat must come before the Enterprise Linux entry */
-{"enterprise linux",    NULL,                      HostinfoSetOracleShortName},
-{"fedora",              STR_OS_FEDORA,             HostinfoGenericSetShortName},
-{"gentoo",              STR_OS_GENTOO,             HostinfoGenericSetShortName},
-{"immunix",             STR_OS_IMMUNIX,            HostinfoGenericSetShortName},
-{"linux-from-scratch",  STR_OS_LINUX_FROM_SCRATCH, HostinfoGenericSetShortName},
-{"linux-ppc",           STR_OS_LINUX_PPC,          HostinfoGenericSetShortName},
-{"mandrake",            STR_OS_MANDRAKE,           HostinfoGenericSetShortName},
-{"mandriva",            STR_OS_MANDRIVA,           HostinfoGenericSetShortName},
-{"mklinux",             STR_OS_MKLINUX,            HostinfoGenericSetShortName},
-{"opensuse",            STR_OS_OPENSUSE,           HostinfoGenericSetShortName},
-{"oracle",              NULL,                      HostinfoSetOracleShortName},
-{"pld",                 STR_OS_PLD,                HostinfoGenericSetShortName},
-{"slackware",           STR_OS_SLACKWARE,          HostinfoGenericSetShortName},
-{"sme server",          STR_OS_SMESERVER,          HostinfoGenericSetShortName},
-{"suse",                NULL,                      HostinfoSetSuseShortName},
-{"tiny sofa",           STR_OS_TINYSOFA,           HostinfoGenericSetShortName},
-{"turbolinux",          STR_OS_TURBO,              HostinfoGenericSetShortName},
-{"ubuntu",              STR_OS_UBUNTU,             HostinfoGenericSetShortName},
-{"ultra penguin",       STR_OS_ULTRAPENGUIN,       HostinfoGenericSetShortName},
-{"united linux",        STR_OS_UNITEDLINUX,        HostinfoGenericSetShortName},
-{"va linux",            STR_OS_VALINUX,            HostinfoGenericSetShortName},
-{"vmware photon",       STR_OS_PHOTON,             HostinfoGenericSetShortName},
-{"yellow dog",          STR_OS_YELLOW_DOG,         HostinfoGenericSetShortName},
-{NULL,                  NULL,                      NULL} // MUST BE LAST
+{ "enterprise linux",    NULL,                      HostinfoSetOracleShortName  },
+{ "fedora",              STR_OS_FEDORA,             HostinfoGenericSetShortName },
+{ "gentoo",              STR_OS_GENTOO,             HostinfoGenericSetShortName },
+{ "immunix",             STR_OS_IMMUNIX,            HostinfoGenericSetShortName },
+{ "linux-from-scratch",  STR_OS_LINUX_FROM_SCRATCH, HostinfoGenericSetShortName },
+{ "linux-ppc",           STR_OS_LINUX_PPC,          HostinfoGenericSetShortName },
+{ "mandrake",            STR_OS_MANDRAKE,           HostinfoGenericSetShortName },
+{ "mandriva",            STR_OS_MANDRIVA,           HostinfoGenericSetShortName },
+{ "mklinux",             STR_OS_MKLINUX,            HostinfoGenericSetShortName },
+{ "opensuse",            STR_OS_OPENSUSE,           HostinfoGenericSetShortName },
+{ "oracle",              NULL,                      HostinfoSetOracleShortName  },
+{ "pld",                 STR_OS_PLD,                HostinfoGenericSetShortName },
+{ "rocky linux",         STR_OS_ROCKY_LINUX,        HostinfoGenericSetShortName },
+{ "slackware",           STR_OS_SLACKWARE,          HostinfoGenericSetShortName },
+{ "sme server",          STR_OS_SMESERVER,          HostinfoGenericSetShortName },
+{ "suse",                NULL,                      HostinfoSetSuseShortName    },
+{ "tiny sofa",           STR_OS_TINYSOFA,           HostinfoGenericSetShortName },
+{ "turbolinux",          STR_OS_TURBO,              HostinfoGenericSetShortName },
+{ "ubuntu",              STR_OS_UBUNTU,             HostinfoGenericSetShortName },
+{ "ultra penguin",       STR_OS_ULTRAPENGUIN,       HostinfoGenericSetShortName },
+{ "united linux",        STR_OS_UNITEDLINUX,        HostinfoGenericSetShortName },
+{ "va linux",            STR_OS_VALINUX,            HostinfoGenericSetShortName },
+{ "vmware photon",       STR_OS_PHOTON,             HostinfoGenericSetShortName },
+{ "yellow dog",          STR_OS_YELLOW_DOG,         HostinfoGenericSetShortName },
+{ NULL,                  NULL,                      NULL                        } // MUST BE LAST
 };
 
 
@@ -1842,8 +1829,8 @@ HostinfoDefaultLinux(char *distro,            // OUT/OPT:
                      size_t distroShortSize)  // IN:
 {
    char generic[128];
-   char *distroOut = NULL;
-   char *distroShortOut = NULL;
+   const char *distroOut = NULL;
+   const char *distroShortOut = NULL;
    int majorVersion = Hostinfo_OSVersion(0);
    int minorVersion = Hostinfo_OSVersion(1);
 
@@ -1880,6 +1867,11 @@ HostinfoDefaultLinux(char *distro,            // OUT/OPT:
    case 5:
       distroOut = STR_OS_OTHER_5X_FULL;
       distroShortOut = STR_OS_OTHER_5X;
+      break;
+
+   case 6:
+      distroOut = STR_OS_OTHER_6X_FULL;
+      distroShortOut = STR_OS_OTHER_6X;
       break;
 
    default:
@@ -3337,8 +3329,8 @@ Hostinfo_Daemonize(const char *path,             // IN: NUL-terminated UTF-8
  */
 
 static char *
-HostinfoGetCpuInfo(int nCpu,    // IN:
-                   char *name)  // IN:
+HostinfoGetCpuInfo(int nCpu,         // IN:
+                   const char *name) // IN:
 {
    FILE *f;
    char *line;
@@ -3921,7 +3913,7 @@ NOT_IMPLEMENTED();
 
 static Bool
 HostinfoFindEntry(char *buffer,         // IN: Buffer
-                  char *string,         // IN: String sought
+                  const char *string,   // IN: String sought
                   unsigned int *value)  // OUT: Value
 {
    char *p = strstr(buffer, string);
@@ -3969,8 +3961,8 @@ HostinfoFindEntry(char *buffer,         // IN: Buffer
  */
 
 static Bool
-HostinfoGetMemInfo(char *name,           // IN:
-                   unsigned int *value)  // OUT:
+HostinfoGetMemInfo(const char *name,    // IN:
+                   unsigned int *value) // OUT:
 {
    size_t len;
    char   buffer[4096];
@@ -4404,11 +4396,67 @@ Hostinfo_GetLibraryPath(void *addr)  // IN
 /*
  *----------------------------------------------------------------------
  *
- * Hostinfo_QueryProcessExistence --
+ * Hostinfo_AcquireProcessSnapshot --
  *
- *      Determine if a PID is "alive" or "dead". Failing to be able to
- *      do this perfectly, do not make any assumption - say the answer
- *      is unknown.
+ *      Acquire a snapshot of the process table. On POSIXen, this is
+ *      a NOP.
+ *
+ * Results:
+ *      !NULL - A process snapshot pointer.
+ *
+ * Side effects:
+ *      None
+ *
+ *----------------------------------------------------------------------
+ */
+
+struct HostinfoProcessSnapshot {
+   int dummy;
+};
+
+static HostinfoProcessSnapshot hostinfoProcessSnapshot = { 0 };
+
+HostinfoProcessSnapshot *
+Hostinfo_AcquireProcessSnapshot(void)
+{
+   return &hostinfoProcessSnapshot;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Hostinfo_ReleaseProcessSnapshot --
+ *
+ *      Release a snapshot of the process table. On POSIXen, this is
+ *      a NOP.
+ *
+ * Results:
+ *      None
+ *
+ * Side effects:
+ *      None
+ *
+ *----------------------------------------------------------------------
+ */
+
+void
+Hostinfo_ReleaseProcessSnapshot(HostinfoProcessSnapshot *s)  // IN/OPT:
+{
+   if (s != NULL) {
+      VERIFY(s == &hostinfoProcessSnapshot);
+   }
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Hostinfo_QueryProcessSnapshot --
+ *
+ *      Determine if a PID is "alive" or "dead" within the specified
+ *      process snapshot. Failing to be able to do this perfectly,
+ *      do not make any assumption - say the answer is unknown.
  *
  * Results:
  *      HOSTINFO_PROCESS_QUERY_ALIVE    Process is alive
@@ -4422,12 +4470,14 @@ Hostinfo_GetLibraryPath(void *addr)  // IN
  */
 
 HostinfoProcessQuery
-Hostinfo_QueryProcessExistence(int pid)  // IN:
+Hostinfo_QueryProcessSnapshot(HostinfoProcessSnapshot *s,  // IN:
+                              int pid)                     // IN:
 {
    HostinfoProcessQuery ret;
-   int err = (kill(pid, 0) == -1) ? errno : 0;
 
-   switch (err) {
+   ASSERT(s != NULL);
+
+   switch ((kill(pid, 0) == -1) ? errno : 0) {
    case 0:
    case EPERM:
       ret = HOSTINFO_PROCESS_QUERY_ALIVE;
@@ -4442,3 +4492,4 @@ Hostinfo_QueryProcessExistence(int pid)  // IN:
 
    return ret;
 }
+

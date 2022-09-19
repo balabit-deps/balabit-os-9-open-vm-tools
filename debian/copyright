@@ -29,7 +29,9 @@ License: xfree86-1.0
 
 Files: debian/*
 Copyright: 2007-2013 Daniel Baumann <mail@daniel-baumann.ch>
-           2014-2019 Bernd Zeimetz <bzed@debian.org>
+           2014-2022 Bernd Zeimetz <bzed@debian.org>
+           2017-2022 Christian Ehrhardt <christian.ehrhardt@canonical.com
+           2022 Bryce Harrington <bryce@canonical.com>
 License: GPL-2+
 
 License: BSD-3
