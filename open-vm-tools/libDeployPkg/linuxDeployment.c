@@ -1,5 +1,5 @@
 /*********************************************************
- * Copyright (C) 2006-2021 VMware, Inc. All rights reserved.
+ * Copyright (C) 2006-2022 VMware, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
@@ -113,6 +113,7 @@ static const char* ERRORED         = "ERRORED";
 #ifndef IMGCUST_UNITTEST
 static const char* RUNDIR          = "/run";
 static const char* VARRUNDIR       = "/var/run";
+static const char* VARRUNIMCDIR    = "/var/run/vmware-imc";
 #endif
 static const char* TMPDIR          = "/tmp";
 
@@ -122,6 +123,7 @@ static const int CUST_GENERIC_ERROR = 255;
 static const int CUST_NETWORK_ERROR = 254;
 static const int CUST_NIC_ERROR     = 253;
 static const int CUST_DNS_ERROR     = 252;
+static const int CUST_SCRIPT_DISABLED_ERROR = 6;
 
 // the error code to use cloudinit workflow
 typedef enum USE_CLOUDINIT_ERROR_CODE {
@@ -273,11 +275,10 @@ void
 Debug(const char *fmtstr, ...)
 {
 #ifdef VMX86_DEBUG
-   va_list args;
-
    char *tmp = malloc(MAXSTRING);
 
    if (tmp != NULL) {
+      va_list args;
       va_start(args, fmtstr);
       Str_Vsnprintf(tmp, MAXSTRING, fmtstr, args);
       va_end(args);
@@ -465,11 +466,10 @@ SetDeployError(const char* format, ...)
    /*
     * No Error check is employed since this is only an advisory service.
     */
-   va_list args;
-
    char* tmp = malloc(MAXSTRING);
 
    if (tmp != NULL) {
+      va_list args;
       va_start(args, format);
       Str_Vsnprintf(tmp, MAXSTRING, format, args);
       va_end(args);
@@ -1328,8 +1328,11 @@ Deploy(const char* packageName)
 #ifdef IMGCUST_UNITTEST
    baseDirPath = TMPDIR;
 #else
+   // PR 2942062, Use /var/run/vmware-imc if the directory exists
    // PR 2127543, Use /var/run or /run but /tmp firstly
-   if (File_IsDirectory(VARRUNDIR)) {
+   if (File_IsDirectory(VARRUNIMCDIR)) {
+      baseDirPath = VARRUNIMCDIR;
+   } else if (File_IsDirectory(VARRUNDIR)) {
       baseDirPath = VARRUNDIR;
    } else if (File_IsDirectory(RUNDIR)) {
       baseDirPath = RUNDIR;
@@ -1444,6 +1447,11 @@ Deploy(const char* packageName)
             SetCustomizationStatusInVmx(TOOLSDEPLOYPKG_RUNNING,
                                         GUESTCUST_EVENT_NETWORK_SETUP_FAILED,
                                         NULL);
+         } else if (deploymentResult == CUST_SCRIPT_DISABLED_ERROR) {
+            sLog(log_info,
+                 "Setting custom script disabled error status in vmx.");
+            SetCustomizationStatusInVmx(TOOLSDEPLOYPKG_RUNNING,
+               TOOLSDEPLOYPKG_ERROR_CUST_SCRIPT_DISABLED, NULL);
          } else {
             sLog(log_info, "Setting '%s' error status in vmx.",
                  deploymentResult == CUST_GENERIC_ERROR ? "generic" : "unknown");
@@ -1883,6 +1891,16 @@ DeployPkg_DeployPackageFromFileEx(const char* file)
 {
    DeployPkgStatus retStatus;
 
+#if !defined(OPEN_VM_TOOLS) && !defined(USERWORLD)
+   sLog(log_info, "libDeployPkg.so version: %s (%s)",
+        SYSIMAGE_VERSION_EXT_STR, BUILD_NUMBER);
+#else
+   /*
+    * For OPEN_VM_TOOLS and USERWORLD, the vmtoolsd version is logged in
+    * function DeployPkgDeployPkgInGuest from
+    * services/plugins/deployPkg/deployPkg.c
+    */
+#endif
    sLog(log_info, "Initializing deployment module.");
    Init();
 

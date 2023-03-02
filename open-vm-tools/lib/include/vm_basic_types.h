@@ -1,5 +1,5 @@
 /*********************************************************
- * Copyright (C) 1998-2021 VMware, Inc. All rights reserved.
+ * Copyright (C) 1998-2022 VMware, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
@@ -512,14 +512,7 @@ typedef uint64    PhysMemOff;
 typedef uint64    PhysMemSize;
 
 typedef uint64    BA;
-#ifdef VMKERNEL
-typedef void     *BPN;
-#else
 typedef uint64    BPN;
-#endif
-
-#define UINT64_2_BPN(u) ((BPN)(u))
-#define BPN_2_UINT64(b) ((uint64)(b))
 
 typedef uint64    PageCnt;
 typedef uint64    PageNum;
@@ -546,9 +539,6 @@ typedef User_CartelID User_SessionID;
 typedef User_CartelID User_CartelGroupID;
 #define INVALID_CARTELGROUP_ID INVALID_CARTEL_ID
 
-typedef uint32 Worldlet_ID;
-#define INVALID_WORLDLET_ID ((Worldlet_ID)-1)
-
 typedef  int8    Reg8;
 typedef  int16   Reg16;
 typedef  int32   Reg32;
@@ -566,7 +556,7 @@ typedef uint128 UReg128;
 
 #if (defined(VMM) || defined(COREQUERY) || defined(EXTDECODER) ||  \
      defined (VMKERNEL) || defined (VMKBOOT) || defined (ULM)) &&  \
-    !defined (FROBOS)
+    !defined (FROBOS) || defined (VSAN_USERLEVEL)
 typedef  Reg64  Reg;
 typedef UReg64 UReg;
 #endif
@@ -669,12 +659,12 @@ typedef void * UserVA;
 #define MAX_MPN           ((MPN)MPN38_MASK - 3) /* 50 bits of address space */
 
 #define INVALID_IOPN      ((IOPN)-1)
-#define MAX_IOPN          (INVALID_IOPN - 1)
+#define MAX_IOPN          (IOA_2_IOPN((IOA)-1))
 
 #define INVALID_LPN       ((LPN)-1)
 #define INVALID_VPN       ((VPN)-1)
 #define INVALID_LPN64     ((LPN64)-1)
-#define INVALID_PAGENUM   ((PageNum)0x000000ffffffffffull)
+#define INVALID_PAGENUM   ((PageNum)0x0000003fffffffffull)
 #define INVALID_PAGENUM32 ((uint32)-1)
 
 /*
@@ -775,11 +765,11 @@ typedef void * UserVA;
 #endif
 
 /*
- * Similarly, we require a compiler that is at least vs2012.
+ * Similarly, we require a compiler that is at least vs2015.
  * Enforce this here.
  */
-#if defined _MSC_VER && _MSC_VER < 1700
-#error "cl.exe version is too old, need vs2012 or better"
+#if defined _MSC_VER && _MSC_VER < 1900
+#error "cl.exe version is too old, need vs2015 or better"
 #endif
 
 

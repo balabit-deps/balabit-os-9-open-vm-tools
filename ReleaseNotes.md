@@ -1,8 +1,8 @@
-#          Open-vm-tools 11.3.5 Release Notes
+#                      Open-vm-tools 12.1.0 Release Notes
 
-Updated on: 23 SEP 2021
+Updated on: 23rd AUG 2022
 
-Open-vm-tools | 23 SEP 2021 | Build 18557794
+Open-vm-tools | 23rd AUG 2022 | Build 20219665
 
 Check back for additions and updates to these release notes.
 
@@ -10,95 +10,79 @@ Check back for additions and updates to these release notes.
 
 The release notes cover the following topics:
 
-*   [What's New](#whatsnew)
-*   [Internationalization](#internationalization)
-*   [End of Feature Support Notice](#endoffeaturesupport)
-*   [Guest Operating System Customization Support](#guestop)
-*   [Interoperability Matrix](#interop)
-*   [Resolved Issues](#resolved-issues)
-*   [Known Issues](#known-issues)
+* [What's New](#whatsnew) 
+* [Internationalization](#i18n) 
+* [End of Feature Support Notice](#endoffeaturesupport) 
+* [Guest Operating System Customization Support](#guestop) 
+* [Interoperability Matrix](#interop) 
+* [Resolved Issues](#resolvedissues) 
+* [Known Issues](#knownissues)
 
 ## <a id="whatsnew" name="whatsnew"></a>What's New
 
-*   **For issues resolved in this release, see [Resolved Issues](#resolved-issues) section.**
+* This release resolves CVE-2022-31676. For more information on this vulnerability and its impact on VMware products, see [https://www.vmware.com/security/advisories/VMSA-2022-0024.html](https://www.vmware.com/security/advisories/VMSA-2022-0024.html).
 
-*   **Added a configurable logging capability to the `network` script.**
+*   Please see the [Resolved Issues](#resolvedissues) and [Known Issues](#knownissues) sections below.
 
-    The `network` script has been updated to:
-       - use `vmware-toolbox-cmd` to query any network logging configuration from the `tools.conf` file.
-       - use `vmtoolsd --cmd "log ..."` to log a message to the vmx logfile when the logging handler is configured to "vmx" or when the logfile is full or is not writeable.
 
-*   **The hgfsmounter (`mount.vmhgfs`) command has been removed from open-vm-tools.**
+## <a id="i18n" name="i18n"></a>Internationalization
 
-    The hgfsmounter (`mount.vmhgfs`) command is no longer used in Linux open-vm-tools.  It has been replaced by hgfs-fuse.  Therefore, removing all references to the hgfsmounter in Linux builds.
+Open-vm-tools 12.1.0 is available in the following languages:
 
-## <a id="internationalization" name="internationalization"></a>Internationalization
-
-Open-vm-tools 11.3.5 is available in the following languages:
-
-*   English
-*   French
-*   German
-*   Spanish
-*   Italian
-*   Japanese
-*   Korean
-*   Simplified Chinese
-*   Traditional Chinese
+* English
+* French
+* German
+* Spanish
+* Italian
+* Japanese
+* Korean
+* Simplified Chinese
+* Traditional Chinese
 
 ## <a id="endoffeaturesupport" name="endoffeaturesupport"></a>End of Feature Support Notice
 
-*   The tar tools (linux.iso) and OSPs shipped with VMware Tools 10.3.x release will continue to be supported.  However, releases after VMware Tools 10.3.5 will only include critical and security fixes.  No new feature support will be provided in these types of VMware Tools (tar tools and OSP's).  It is recommended that customers use open-vm-tools for those operating systems that support open-vm-tools.  For more information on different types of VMware Tools, see [https://blogs.vmware.com/vsphere/2016/02/understanding-the-three-types-of-vm-tools.html](https://blogs.vmware.com/vsphere/2016/02/understanding-the-three-types-of-vm-tools.html)
+ * The tar tools (linux.iso) and OSPs shipped with VMware Tools 10.3.x release will continue to be supported. However, releases after VMware Tools 10.3.5 will only include critical and security fixes. No new feature support will be provided in these types of VMware Tools (tar tools and OSP's). It is recommended that customers use open-vm-tools for those operating systems that support open-vm-tools. For more information about open-vm-tools, see [KB 2073803](https://kb.vmware.com/s/article/2073803).
 
 ## <a id="guestop" name="guestop"></a>Guest Operating System Customization Support
-
-The [Guest OS Customization Support Matrix](http://partnerweb.vmware.com/programs/guestOS/guest-os-customization-matrix.pdf) provides details about the guest operating systems supported for customization.
+The [Guest OS Customization Support Matrix](http://partnerweb.vmware.com/programs/guestOS/guest-os-customization-matrix.pdf) provides details about the guest operating systems supported for customization.
 
 ## <a id="interop" name="interop"></a>Interoperability Matrix
 
-The [VMware Product Interoperability Matrix](http://partnerweb.vmware.com/comp_guide2/sim/interop_matrix.php) provides details about the compatibility of current and earlier versions of VMware Products.
+The [VMware Product Interoperability Matrix](http://partnerweb.vmware.com/comp_guide2/sim/interop_matrix.php) provides details about the compatibility of current and earlier versions of VMware Products. 
 
-## <a id="resolved-issues" name="resolved-issues"></a>Resolved Issues
+## <a id="resolvedissues" name ="resolvedissues"></a> Resolved Issues
 
-*   **Customization: Retry the Linux reboot if `telinit` is a soft link to systemctl
-.**
+*   A number of Coverity reported issues have been addressed.
 
-    Issues have been reported on some newer versions of Linux where the VM failed to reboot at the end of a traditional customization.  The command '/sbin/telinit 6' exited abnormally due to SIGTERM sent by systemd and where `telinit` is a symlink to systemctl.
+*   **[FTBFS] Fix the build of the ContainerInfo plugin for a 32-bit Linux release**
 
-    This issue is fixed in the 11.3.5 open-vm-tools release.
+    Reported in [open-vm-tools pull request #588](https://github.com/vmware/open-vm-tools/pull/588), the fix did not make the code freeze date for open-vm-tools 12.0.5.
 
-*   **Open-vm-tools commands would hang if configured with "--enable-valgrind".**
+    This issue is fixed in this release.
 
-    The "backdoor" touch test cannot be handled by Valgrind.
+*   **Make HgfsConvertFromNtTimeNsec aware of 64-bit time_t on i386 (32-bit)**
 
-    This issue is fixed in the 11.3.5 open-vm-tools release.
+    Reported in [open-vm-tools pull request #387](https://github.com/vmware/open-vm-tools/pull/387), this change incorporates the support of 64 bit time epoch conversion from Windows NT time to Unix Epoch time on i386.
 
-## <a id="known-issues" name="known-issues"></a>Known Issues
+*   **A complete list of the granular changes in the open-vm-tools 12.1.0 release is available at:**
 
-**Open-vm-tools Issues in VMware Workstation or Fusion**
+    [Open-vm-tools ChangeLog](https://github.com/vmware/open-vm-tools/blob/stable-12.1.0/open-vm-tools/ChangeLog)
+
+## <a id="knownissues" name="knownissues"></a>Known Issues
+
 
 *   **Shared Folders mount is unavailable on Linux VM.**
 
     If the **Shared Folders** feature is enabled on a Linux VM while it is powered off, the shared folders mount is not available on restart.
 
-    Note: This issue is applicable to open-vm-tools running on Workstation and Fusion.
+    Note: This issue is applicable to open-vm-tools running on VMware Workstation and VMware Fusion.
 
     Workaround:
 
-    If the VM is powered on, disable and enable the **Shared Folders** feature from the interface. For resolving the issue permanently, edit **/etc/fstab** and add an entry to mount the Shared Folders automatically on boot.
-
-    For example, add the line:
+    If the VM is powered on, disable and enable the **Shared Folders** feature from the interface. For resolving the issue permanently, edit **/etc/fstab** and add an entry to mount the Shared Folders automatically on boot.  For example, add the line:
 
     <tt>vmhgfs-fuse   /mnt/hgfs    fuse    defaults,allow_other    0    0</tt>
 
-*   **Drag functionality fails to work in Ubuntu.**
 
-    Drag functionality fails to work in Ubuntu 16.04.4 32-bit virtual machines installed using Easy Install. Also, failure of the copy and paste functionality is observed in the same systems.
 
-    Note: This issue is applicable to open-vm-tools running on Workstation and Fusion.
-
-    Workaround:
-
-    *   Add the <tt>modprobe.blacklist=vmwgfx</tt> linux kernel boot option.
-    *   To gain access to larger resolutions, remove <tt>svga.guestBackedPrimaryAware = "TRUE"</tt> option from the <tt>VMX</tt> file.
 
