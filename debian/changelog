@@ -1,3 +1,46 @@
+open-vm-tools (2:12.1.5-3~ubuntu0.22.04.1) jammy; urgency=medium
+
+  * Backport recent open-vm-tools release v12.1.5
+    (LP: #1998558)
+  * d/control: Add libabsl-dev as explicit build-dependency.
+    - (Closes #1032305)
+
+ -- Bryce Harrington <bryce@canonical.com>  Thu, 16 Mar 2023 23:57:03 +0000
+
+open-vm-tools (2:12.1.5-3) unstable; urgency=medium
+
+  * [1e4d8a9] Remove libprocps-dev build-dep. (Closes: #1027271)
+
+ -- Bernd Zeimetz <bzed@debian.org>  Tue, 03 Jan 2023 12:19:05 +0100
+
+open-vm-tools (2:12.1.5-2) unstable; urgency=medium
+
+  * [f450cf8] Fix building with gRPC 1.51+
+    Thanks to Laszlo Boszormenyi (GCS) (Closes: #1025491)
+
+ -- Bernd Zeimetz <bzed@debian.org>  Sat, 24 Dec 2022 16:52:48 +0100
+
+open-vm-tools (2:12.1.5-1) unstable; urgency=medium
+
+  * [d4a64a2] New upstream version 12.1.5
+  * [adcd7a9] Remove accidentally added patch backup files
+
+ -- Bernd Zeimetz <bzed@debian.org>  Wed, 07 Dec 2022 17:30:35 +0100
+
+open-vm-tools (2:12.1.0-2) unstable; urgency=medium
+
+  [ Debian Janitor ]
+  * [2d8b9bb] Update lintian override info to new format on line 2.
+    Changes-By: lintian-brush
+    Fixes: lintian: mismatched-override
+    See-also: https://lintian.debian.org/tags/mismatched-override.html
+
+  [ Bernd Zeimetz ]
+  * [fa63406] Move libguestStore.so, libgdp.so to open-vm-tools
+    (Closes: #1021611) (LP: #1992501)
+
+ -- Bernd Zeimetz <bzed@debian.org>  Mon, 14 Nov 2022 16:19:10 +0100
+
 open-vm-tools (2:12.1.0-1~ubuntu0.22.04.1) jammy; urgency=medium
 
   * Backport recent open-vm-tools (LP: #1975767)
