@@ -1,3 +1,11 @@
+open-vm-tools (2:12.1.5-3~ubuntu0.22.04.2) jammy-security; urgency=medium
+
+  * SECURITY UPDATE: authentication bypass vulnerability
+    - debian/patches/CVE-2023-20867.patch: Remove some dead code
+    - CVE-2023-20867
+
+ -- Nishit Majithia <nishit.majithia@canonical.com>  Tue, 25 Jul 2023 09:39:02 +0530
+
 open-vm-tools (2:12.1.5-3~ubuntu0.22.04.1) jammy; urgency=medium
 
   * Backport recent open-vm-tools release v12.1.5
