@@ -1,3 +1,13 @@
+open-vm-tools (2:12.1.5-3~ubuntu0.22.04.3) jammy-security; urgency=medium
+
+  * SECURITY UPDATE: SAML token signature bypass vulnerability
+    - debian/patches/CVE-2023-20900.patch: Allow only X509 certs to verify
+      the SAML token signature in
+      open-vm-tools/vgauth/serviceImpl/saml-xmlsec1.c.
+    - CVE-2023-20900
+
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Mon, 11 Sep 2023 14:45:55 -0400
+
 open-vm-tools (2:12.1.5-3~ubuntu0.22.04.2) jammy-security; urgency=medium
 
   * SECURITY UPDATE: authentication bypass vulnerability
