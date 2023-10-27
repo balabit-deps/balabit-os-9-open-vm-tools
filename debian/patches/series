@@ -3,3 +3,5 @@ debian/scsi-udev-rule
 debian/grpc_1.51
 CVE-2023-20867.patch
 CVE-2023-20900.patch
+CVE-2023-34058.patch
+CVE-2023-34059.patch

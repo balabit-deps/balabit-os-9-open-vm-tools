@@ -1,3 +1,20 @@
+open-vm-tools (2:12.1.5-3~ubuntu0.22.04.4) jammy-security; urgency=medium
+
+  * SECURITY UPDATE: SAML Bypass
+    - debian/patches/CVE-2023-34058.patch: don't accept tokens with
+      unrelated certs in open-vm-tools/vgauth/common/certverify.c,
+      open-vm-tools/vgauth/common/certverify.h,
+      open-vm-tools/vgauth/common/prefs.h,
+      open-vm-tools/vgauth/serviceImpl/saml-xmlsec1.c.
+    - CVE-2023-34058
+  * SECURITY UPDATE: file descriptor hijack
+    - debian/patches/CVE-2023-34059.patch: change privilege dropping order
+      in  open-vm-tools/services/vmtoolsd/mainPosix.c,
+      open-vm-tools/vmware-user-suid-wrapper/main.c.
+    - CVE-2023-34059
+
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Fri, 27 Oct 2023 07:38:17 -0400
+
 open-vm-tools (2:12.1.5-3~ubuntu0.22.04.3) jammy-security; urgency=medium
 
   * SECURITY UPDATE: SAML token signature bypass vulnerability
