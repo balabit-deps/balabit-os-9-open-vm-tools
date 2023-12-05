@@ -1,5 +1,5 @@
 /*********************************************************
- * Copyright (C) 2003-2022 VMware, Inc. All rights reserved.
+ * Copyright (C) 2003-2023 VMware, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
@@ -101,6 +101,9 @@ extern "C" {
 #define ASOCK_ECONNABORTED      WSAECONNABORTED
 #define ASOCK_EPIPE             ERROR_NO_DATA
 #define ASOCK_EHOSTUNREACH      WSAEHOSTUNREACH
+#define ASOCK_ETIMEDOUT         WSAETIMEDOUT
+#define ASOCK_ECONNREFUSED      WSAECONNREFUSED
+#define ASOCK_EACCES            WSAEACCES
 #else
 #define ASOCK_ENOTCONN          ENOTCONN
 #define ASOCK_ENOTSOCK          ENOTSOCK
@@ -112,6 +115,9 @@ extern "C" {
 #define ASOCK_ECONNABORTED      ECONNABORTED
 #define ASOCK_EPIPE             EPIPE
 #define ASOCK_EHOSTUNREACH      EHOSTUNREACH
+#define ASOCK_ETIMEDOUT         ETIMEDOUT
+#define ASOCK_ECONNREFUSED      ECONNREFUSED
+#define ASOCK_EACCES            EACCES
 #endif
 
 /*
@@ -194,6 +200,7 @@ typedef enum AsyncSocketState {
    AsyncSocketConnected,
    AsyncSocketCBCancelled,
    AsyncSocketClosed,
+   AsyncSocketConnectedRdOnly,
 } AsyncSocketState;
 
 
@@ -746,6 +753,11 @@ int AsyncSocket_SetErrorFn(AsyncSocket *asock, AsyncSocketErrorFn errorFn,
 int AsyncSocket_SetCloseOptions(AsyncSocket *asock,
                                 int flushEnabledMaxWaitMsec,
                                 AsyncSocketCloseFn closeCb);
+
+/*
+ * Close the write side of the connection.
+ */
+int AsyncSocket_CloseWrite(AsyncSocket *asock);
 
 /*
  * Close the connection and destroy the asock.

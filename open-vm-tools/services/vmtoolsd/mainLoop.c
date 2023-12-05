@@ -1,5 +1,5 @@
 /*********************************************************
- * Copyright (C) 2008-2021 VMware, Inc. All rights reserved.
+ * Copyright (c) 2008-2023 VMware, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
@@ -45,17 +45,17 @@
 #include "vmware/tools/utils.h"
 #include "vmware/tools/vmbackup.h"
 
-#if defined(_WIN32) || \
-   (defined(__linux__) && !defined(USERWORLD))
+#if (defined(_WIN32) && !defined(_ARM64_)) || \
+    (defined(__linux__) && !defined(USERWORLD))
 #  include "vmware/tools/guestStore.h"
 #  include "globalConfig.h"
 #endif
 
 /*
- * guestStoreClient library is needed for both Gueststore based tools upgrade
+ * guestStoreClient library is needed for both GuestStore-based tools upgrade
  * and also for GlobalConfig module.
  */
-#if defined(_WIN32) || defined(GLOBALCONFIG_SUPPORTED)
+#if (defined(_WIN32) &&  !defined(_ARM64_)) || defined(GLOBALCONFIG_SUPPORTED)
 #  include "guestStoreClient.h"
 #endif
 
@@ -118,8 +118,8 @@ static gboolean gGlobalConfStarted = FALSE;
 static void
 ToolsCoreCleanup(ToolsServiceState *state)
 {
-#if defined(_WIN32) || \
-   (defined(__linux__) && !defined(USERWORLD))
+#if (defined(_WIN32) && !defined(_ARM64_)) || \
+    (defined(__linux__) && !defined(USERWORLD))
    if (state->mainService) {
       /*
        * Shut down guestStore plugin first to prevent worker threads from being
@@ -137,11 +137,11 @@ ToolsCoreCleanup(ToolsServiceState *state)
    }
 #endif
 
-/*
- * guestStoreClient library is needed for both Gueststore based tools upgrade
- * and also for GlobalConfig module.
- */
-#if defined(_WIN32) || defined(GLOBALCONFIG_SUPPORTED)
+#if (defined(_WIN32) && !defined(_ARM64_)) || defined(GLOBALCONFIG_SUPPORTED)
+   /*
+    * guestStoreClient library is needed for both GuestStore-based tools
+    * upgrade and also for GlobalConfig module.
+    */
    if (state->mainService && GuestStoreClient_DeInit()) {
       g_info("%s: De-initialized GuestStore client.\n", __FUNCTION__);
    }
@@ -461,11 +461,22 @@ ToolsCoreRunLoop(ToolsServiceState *state)
       ToolsCoreReportVersionData(state);
    }
 
-/*
- * guestStoreClient library is needed for both Gueststore based tools upgrade
- * and also for GlobalConfig module.
- */
-#if defined(_WIN32) || defined(GLOBALCONFIG_SUPPORTED)
+#if defined(_WIN32)
+   /*
+    * Call ToolsNotify_Start() to create the global VMToolsNeedReboot event
+    * before loading plugins so that plugins can open the event in their init
+    * routines.
+    */
+   if (state->mainService && ToolsNotify_Start(&state->ctx)) {
+      g_info("%s: Successfully started tools notifications.\n", __FUNCTION__);
+   }
+#endif
+
+#if (defined(_WIN32) && !defined(_ARM64_)) || defined(GLOBALCONFIG_SUPPORTED)
+   /*
+    * guestStoreClient library is needed for both GuestStore-based tools
+    * upgrade and also for GlobalConfig module.
+    */
    if (state->mainService && GuestStoreClient_Init()) {
       g_info("%s: Initialized GuestStore client.\n", __FUNCTION__);
    }
@@ -541,20 +552,14 @@ ToolsCoreRunLoop(ToolsServiceState *state)
        */
       if (state->mainService) {
          if (ToolsCoreHangDetector_Start(&state->ctx)) {
-            g_info("%s: Successfully started tools hang detector",
+            g_info("%s: Successfully started tools hang detector.\n",
                    __FUNCTION__);
          }
-#if defined(_WIN32)
-         if (ToolsNotify_Start(&state->ctx)) {
-            g_info("%s: Successfully started tools notifications",
-                   __FUNCTION__);
-         }
-#endif
       }
 
 #if defined(GLOBALCONFIG_SUPPORTED)
       if (GlobalConfig_Start(&state->ctx)) {
-         g_info("%s: Successfully started global config module.",
+         g_info("%s: Successfully started global config module.\n",
                   __FUNCTION__);
          gGlobalConfStarted = TRUE;
       }
@@ -1196,6 +1201,9 @@ ToolsCore_Setup(ToolsServiceState *state)
 #else
    state->ctx.mainLoop = g_main_loop_new(gctx, FALSE);
 #endif
+   /*
+    * TODO: Build vmcheck library
+    */
    state->ctx.isVMware = VmCheck_IsVirtualWorld();
    g_main_context_unref(gctx);
 

@@ -1,5 +1,5 @@
 /*********************************************************
- * Copyright (C) 2006-2022 VMware, Inc. All rights reserved.
+ * Copyright (c) 2006-2023 VMware, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
@@ -39,7 +39,7 @@
 #include "str.h"
 
 #include "mspackWrapper.h"
-#include "deployPkgFormat.h"
+#include "deployPkg/deployPkgFormat.h"
 #include "deployPkg/linuxDeployment.h"
 #include "imgcust-common/process.h"
 #include "linuxDeploymentUtilities.h"
@@ -1236,7 +1236,6 @@ UseCloudInitWorkflow(const char* dirPath, bool ignoreCloudInit)
 {
    static const char cfgName[] = "cust.cfg";
    static const char metadataName[] = "metadata";
-   static const char cloudInitConfigFilePath[] = "/etc/cloud/cloud.cfg";
    static const char cloudInitCommand[] = "/usr/bin/cloud-init -v";
    char cloudInitCommandOutput[MAX_LENGTH_CLOUDINIT_VERSION];
    int forkExecResult;
@@ -1288,7 +1287,7 @@ UseCloudInitWorkflow(const char* dirPath, bool ignoreCloudInit)
          return USE_CLOUDINIT_OK;
       }
    } else {
-      if (IsCloudInitEnabled(cloudInitConfigFilePath)) {
+      if (IsCloudInitCustomizationEnabled()) {
          return USE_CLOUDINIT_OK;
       } else {
          return USE_CLOUDINIT_DISABLED;

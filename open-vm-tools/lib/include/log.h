@@ -1,5 +1,5 @@
 /*********************************************************
- * Copyright (C) 1998-2022 VMware, Inc. All rights reserved.
+ * Copyright (C) 1998-2023 VMware, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
@@ -402,6 +402,7 @@ Log_NewCustomOutput(const char *instanceName,
 typedef struct {
    uint8 level;
    Bool  additionalLine;
+   size_t msgLen;
    char  timeStamp[64];
    char  threadName[32];
    char  opID[LOG_MAX_OPID_LENGTH + 1];  // Will be empty string on hosted products
@@ -443,14 +444,20 @@ Log_SetOutputLevel(LogOutput *output,
                    int32 level);
 
 /*
- * Structure contains all the pointers to where value can be updated
+ * Structure contains all the pointers to where value can be updated.
  * Making VmxStats as a struct has its own advantage, such as updating
  * 'droppedChars' from the struct instead within LogFile.
  */
+
+struct VmxStatMinMax64;
+
 typedef struct {
-   uint64 *numTimesDrop; // total time char dropped
-   uint64 *droppedChars; // Number of drop char
-   uint64 *bytesLogged;  // Total logged
+   uint64          *logMsgsDropped;    // Number of dropped messages
+   uint64          *logBytesDropped;   // Number of drop bytes
+   uint64          *logBytesLogged;    // Bytes logged
+
+   struct VmxStatMinMax64 *logWriteMinMaxTime; // Min/max write time in US
+   uint64          *logWriteAvgTime;   // Average time to write in US
 } VmxStatsInfo;
 
 Bool
@@ -599,9 +606,6 @@ Log_SkipLocking(Bool skipLocking);
 
 void
 Log_DisableThrottling(void);
-
-void
-Log_DisableVmxStats(void);
 
 uint32
 Log_MaxLineLength(void);

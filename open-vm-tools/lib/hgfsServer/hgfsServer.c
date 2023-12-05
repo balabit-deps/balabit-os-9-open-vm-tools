@@ -1,5 +1,5 @@
 /*********************************************************
- * Copyright (C) 1998-2021 VMware, Inc. All rights reserved.
+ * Copyright (c) 1998-2023 VMware, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
@@ -55,6 +55,10 @@
 #include "mutexRankLib.h"
 #include "vm_basic_asm.h"
 #include "unicodeOperations.h"
+
+#ifndef VM_X86_ANY
+#include "random.h"
+#endif
 
 #if defined(_WIN32)
 #include <io.h>
@@ -3427,11 +3431,18 @@ HgfsServerSessionReceive(HgfsPacket *packet,      // IN: Hgfs Packet
    }
 
    /*
-    * Storage pointed at by the variable input was freed either by
-    * HgfsServerProcessRequest at the end of request processing
-    * or by HgfsServerCompleteRequest if there was a protocol error.
+    * Contrary to Coverity analysis, storage pointed to by the variable
+    * "input" is not leaked; it is freed either by HgfsServerProcessRequest
+    * at the end of request processing or by HgfsServerCompleteRequest if
+    * there is a protocol error.  However, no Coverity annotation for
+    * leaked_storage is added here because such an annotation cannot be
+    * made specific to input; as a result, if any actual memory leaks were
+    * to be introduced by a future change, the leaked_storage annotation
+    * would cause such new leaks to be flagged as false positives.
+    *
+    * XXX - can something be done with Coverity function models so that
+    * Coverity stops reporting this?
     */
-   /* coverity[leaked_storage] */
 }
 
 
@@ -4152,7 +4163,16 @@ HgfsServer_ShareAccessCheck(HgfsOpenMode accessMode,  // IN: open mode to check
 static uint64
 HgfsGenerateSessionId(void)
 {
+#ifdef VM_X86_ANY
    return RDTSC();
+#else
+   uint64 sessionId;
+   rqContext *rCtx = Random_QuickSeed((uint32)time(NULL));
+   sessionId = (uint64)Random_Quick(rCtx) << 32;
+   sessionId |= Random_Quick(rCtx);
+   free(rCtx);
+   return sessionId;
+#endif
 }
 
 
@@ -5561,7 +5581,7 @@ HgfsServerStatFs(const char *pathName, // IN: Path we're interested in
    Wiper_Init(NULL);
 
    /*
-    * Sanity checks. If length is good, assume well-formed drive path
+    * Confidence checks. If length is good, assume well-formed drive path
     * (i.e. "C:\..." or "\\abc..."). Note that we throw out shares that
     * exactly equal p.mountPoint's size because we won't have room for a null
     * delimiter on copy. Allow 0 length drives so that hidden feature "" can
@@ -5973,6 +5993,18 @@ HgfsServerGetLocalNameInfo(const char *cpName,      // IN:  Cross-platform filen
 
    *bufOut = myBufOut;
 
+   /*
+    * Contrary to Coverity analysis, storage pointed to by the variable
+    * "entry" is not leaked; HgfsCache_Put stores a pointer to it in the
+    * symlink cache.  However, no Coverity annotation for leaked_storage
+    * is added here because such an annotation cannot be made specific to
+    * entry; as a result, if any actual memory leaks were to be introduced
+    * by a future change, the leaked_storage annotation would cause such
+    * new leaks to be flagged as false positives.
+    *
+    * XXX - can something be done with Coverity function models so that
+    * Coverity stops reporting this?
+    */
    return HGFS_NAME_STATUS_COMPLETE;
 
 error:
@@ -8555,6 +8587,19 @@ HgfsServerGetattr(HgfsInputParam *input)  // IN: Input params
    free(localName);
 
    HgfsServerCompleteRequest(status, replyPayloadSize, input);
+
+   /*
+    * Contrary to Coverity analysis, storage pointed to by the variable
+    * "entry" is not leaked; HgfsCache_Put stores a pointer to it in the
+    * symlink cache.  However, no Coverity annotation for leaked_storage
+    * is added here because such an annotation cannot be made specific to
+    * entry; as a result, if any actual memory leaks were to be introduced
+    * by a future change, the leaked_storage annotation would cause such
+    * new leaks to be flagged as false positives.
+    *
+    * XXX - can something be done with Coverity function models so that
+    * Coverity stops reporting this?
+    */
 }
 
 
@@ -8679,7 +8724,7 @@ HgfsServerSetattr(HgfsInputParam *input)  // IN: Input params
  *
  * HgfsServerValidateOpenParameters --
  *
- *    Performs sanity check of the input parameters.
+ *    Performs confidence check of the input parameters.
  *
  * Results:
  *    HGFS_ERROR_SUCCESS if the parameters are valid.

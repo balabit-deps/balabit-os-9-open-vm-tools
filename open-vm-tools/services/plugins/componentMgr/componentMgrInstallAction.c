@@ -1,5 +1,5 @@
 /*********************************************************
- * Copyright (C) 2021 VMware, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 VMware, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
@@ -21,8 +21,8 @@
  *
  * Functions to manage the known and enabled components by the componentMgr.
  * Consists of functions periodically handling adding/removing of
- * components in the guest OS. Periodically read the guestVar
- * guestinfo./vmware.components.<comp_name>.desiredstate and take present or
+ * components in the guest OS. Periodically read the guestVar:
+ * "guestinfo./vmware.components.<comp_name>.desiredstate" and take present or
  * absent action on the components.
  * Adding/removing a component managed by the plugin is performed
  * asynchronously using Proc_Manager API's.
@@ -47,39 +47,48 @@
 
 typedef struct ComponentAction {
    const char *componentName;              /* The name of the enabled
-                                              component. */
+                                            * component.
+                                            */
 
    const char *scriptName;                 /* The default script to be invoked
-                                              to take actions for a particular
-                                              component */
+                                            * to take actions for a particular
+                                            * component
+                                            */
 
    const char *addActionArguments;         /* Default arguments to the script
-                                              to execute present action towards
-                                              the component in the guest OS. */
+                                            * to execute present action towards
+                                            * the component in the guest OS.
+                                            */
 
    const char *removeActionArguments;      /* Default arguments to the script
-                                              to execute absent action towards
-                                              the component in the guest OS. */
+                                            * to execute absent action towards
+                                            * the component in the guest OS.
+                                            */
 
    const char *checkStatusActionArguments; /* Default arguments to the script
-                                              to execute checkstatus towards
-                                              the component in the guest OS. */
+                                            * to execute checkstatus towards
+                                            * the component in the guest OS.
+                                            */
 
    const char* mandatoryParameters;        /* Arguments that are mandatory to
-                                              be passed to script. */
+                                            * be passed to script.
+                                            */
 
    const char *componentDirectory;         /* The name of directory in which
-                                              scripts will be installed.*/
+                                            * scripts will be installed.
+                                            */
 
    char* (*customizeRemoveAction)();       /* A custom callback function
-                                              to customize arguments for
-                                              absent action on the component
-                                              script. */
+                                            * to customize arguments for
+                                            * absent action on the component
+                                            * script.
+                                            */
 
    char* (*customizeAddAction)();          /* A custom callback function
-                                              to customize arguments for
-                                              present action on the component
-                                              script. */
+                                            * to customize arguments for
+                                            * present action on the component
+                                            * script.
+                                            */
 } ComponentAction;
 
 
@@ -214,7 +223,7 @@ ComponentMgr_IsAsyncProcessRunning(int componentIndex) // IN
  * component.
  *
  * @param[in] asyncProcInfo  An asyncProcInfo object of the currently running
-                             async process.
+ *                           async process.
  * @param[in] componentIndex Index of the component in the global array of
  *                           components.
  *
@@ -410,13 +419,13 @@ ComponentMgrCustomizeSaltAddAction()
  * <path to component script> <args to component script>
  *
  * The linux counterpart is constructed as:
- * <path to component script> <argumnets to the script>
+ * <path to component script> <arguments to the script>
  *
  * @param[in] scriptName Name of the component script.
  * @param[in] defaultArguments Default arguments to the component script.
  * @param[in] mandatoryParams mandatory params to the component script.
  * @param[in] customizeAction A callback function to customize the arguments
-                              for the component script.
+ *                            for the component script.
  *
  * @return
  *      A commandline to be directly run as an async process.
@@ -811,17 +820,17 @@ ComponentMgrPublishKnownComponents(ToolsAppCtx *ctx) // IN
       if (components[i].isEnabled) {
          gchar *scriptFullPath;
          /*
-          * We need to check the existence of the script for a particular
-          * component before we begin the preset/absent action on the component.
+          * We need to check the existence of the script for a component before
+          * we begin the present/absent action on the component.
           * Skipping the component if no script is installed.
           */
          scriptFullPath = ComponentMgrGetScriptFullPath(executionScripts[i].scriptName,
                                                         executionScripts[i].componentDirectory);
 
          if (!File_Exists(scriptFullPath)) {
-            g_info("%s: Script file for component %s does not exist "
-                   "under path %s.\n", __FUNCTION__, components[i].name,
-                   scriptFullPath);
+            g_debug("%s: Script file for component %s does not exist "
+                    "under path %s.\n", __FUNCTION__, components[i].name,
+                    scriptFullPath);
             g_free(scriptFullPath);
             components[i].isEnabled = FALSE;
             continue;
@@ -852,11 +861,11 @@ ComponentMgrPublishKnownComponents(ToolsAppCtx *ctx) // IN
  *****************************************************************************
  * ComponentMgrIncludedComponents --
  *
- * This function checks and validates the comma seperated list fetched from
+ * This function checks and validates the comma separated list fetched from
  * included tools.conf configuration and classifies the first occurrence of
  * all or none which are special values and returns the result.
  *
- * @param[in] componentString Comma seperated string from the included
+ * @param[in] componentString Comma separated string from the included
  *                            tools.conf configuration.
  *
  * @retun
@@ -904,7 +913,7 @@ ComponentMgrIncludedComponents(const char* componentString) // IN
  *****************************************************************************
  * ComponentMgr_UpdateComponentEnableStatus --
  *
- * This functions reads the comma seperated list of components in the included
+ * This functions reads the comma separated list of components in the included
  * tools.conf configuration and sets the enabled/disabled status for all the
  * components managed by the plugin.
  * It also publishes guestvar guestinfo.vmware.components.available with
@@ -1090,7 +1099,7 @@ ComponentMgrCheckExecuteComponentAction(ToolsAppCtx *ctx,   // IN
  *      None.
  *
  * Side  effects:
- *       Kills the async process runing any action for a component instantly.
+ *       Kills the async process running any action for a component instantly.
  *
  *****************************************************************************
  */
@@ -1178,7 +1187,7 @@ ComponentMgr_UpdateComponentStatus(ToolsAppCtx *ctx) // IN
       size_t replylen;
       gchar *msg;
 
-     /*
+      /*
        * Proceed only if the component script is installed and
        * the component is enabled by the plugin.
        */

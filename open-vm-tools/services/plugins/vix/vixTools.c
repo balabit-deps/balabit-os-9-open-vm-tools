@@ -1,5 +1,5 @@
 /*********************************************************
- * Copyright (C) 2007-2022 VMware, Inc. All rights reserved.
+ * Copyright (c) 2007-2023 VMware, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
@@ -132,9 +132,11 @@
 /*
  * No support for userworld.  Enable support for open vm tools when
  * USE_VGAUTH is defined.
+ *
+ * XXX - Currently no support for vgauth in Windows on arm64.
  */
 #if ((defined(__linux__) && !defined(USERWORLD)) || defined(_WIN32)) && \
-     (!defined(OPEN_VM_TOOLS) || defined(USE_VGAUTH))
+     (!defined(OPEN_VM_TOOLS) || defined(USE_VGAUTH)) && !defined(_ARM64_)
 #define SUPPORT_VGAUTH 1
 #else
 #define SUPPORT_VGAUTH 0
@@ -160,32 +162,6 @@
 
 static gboolean gSupportVGAuth = USE_VGAUTH_DEFAULT;
 static gboolean QueryVGAuthConfig(GKeyFile *confDictRef);
-
-#ifdef _WIN32
-/*
- * Check bug 2508431 for more details. If an application is not built
- * with proper flags, 'creating a remote thread' to get the process
- * command line will crash the target process. To avoid any such crash,
- * 'remote thread' approach is not used by default.
- *
- * But 'remote thread' approach can be turned on (for whatever reason)
- * by setting the following option to true in the tools.conf file.
- *
- * For few processes, 'WMI' can provide detailed commandline information.
- * But using 'WMI' is a heavy weight approach and may affect the CPU
- * performance and hence it is disabled by default. It can always be
- * turned on by a setting (as mentioned below) in the tools.conf file.
- */
-#define VIXTOOLS_CONFIG_USE_REMOTE_THREAD_PROCESS_COMMAND_LINE  \
-      "useRemoteThreadForProcessCommandLine"
-
-#define VIXTOOLS_CONFIG_USE_WMI_PROCESS_COMMAND_LINE  \
-      "useWMIForProcessCommandLine"
-
-#define USE_REMOTE_THREAD_PROCESS_COMMAND_LINE_DEFAULT FALSE
-#define USE_WMI_PROCESS_COMMAND_LINE_DEFAULT FALSE
-
-#endif
 
 #if ALLOW_LOCAL_SYSTEM_IMPERSONATION_BYPASS
 static gchar *gCurrentUsername = NULL;
@@ -221,6 +197,32 @@ static VGAuthUserHandle *currentUserHandle = NULL;
 
 #endif
 
+#ifdef _WIN32
+/*
+ * Check bug 2508431 for more details. If an application is not built
+ * with proper flags, 'creating a remote thread' to get the process
+ * command line will crash the target process. To avoid any such crash,
+ * 'remote thread' approach is not used by default.
+ *
+ * But 'remote thread' approach can be turned on (for whatever reason)
+ * by setting the following option to true in the tools.conf file.
+ *
+ * For few processes, 'WMI' can provide detailed commandline information.
+ * But using 'WMI' is a heavy weight approach and may affect the CPU
+ * performance and hence it is disabled by default. It can always be
+ * turned on by a setting (as mentioned below) in the tools.conf file.
+ */
+#define VIXTOOLS_CONFIG_USE_REMOTE_THREAD_PROCESS_COMMAND_LINE  \
+      "useRemoteThreadForProcessCommandLine"
+
+#define VIXTOOLS_CONFIG_USE_WMI_PROCESS_COMMAND_LINE  \
+      "useWMIForProcessCommandLine"
+
+#define USE_REMOTE_THREAD_PROCESS_COMMAND_LINE_DEFAULT FALSE
+#define USE_WMI_PROCESS_COMMAND_LINE_DEFAULT FALSE
+
+#endif
+
 /*
  * This should be an allocated string containing the impersonated username
  * while impersonation is active, and NULL when its not.
@@ -253,8 +255,6 @@ char *gImpersonatedUsername = NULL;
  */
 #define  VIX_TOOLS_CONFIG_API_AUTHENTICATION          "Authentication"
 #define  VIX_TOOLS_CONFIG_AUTHTYPE_AGENTS             "InfrastructureAgents"
-
-#define VIX_TOOLS_CONFIG_INFRA_AGENT_DISABLED_DEFAULT  TRUE
 
 /*
  * The switch that controls all APIs
@@ -726,12 +726,10 @@ VixError GuestAuthPasswordAuthenticateImpersonate(
 VixError GuestAuthSAMLAuthenticateAndImpersonate(
    char const *obfuscatedNamePassword,
    Bool loadUserProfile,
+   Bool hostVerified,
    void **userToken);
 
 void GuestAuthUnimpersonate();
-
-static Bool VixToolsCheckIfAuthenticationTypeEnabled(GKeyFile *confDictRef,
-                                                     const char *typeName);
 
 #if SUPPORT_VGAUTH
 
@@ -1750,7 +1748,7 @@ VixToolsStartProgramImpl(const char *requestName,            // IN
       goto quit;
    }
 
-   /* sanity check workingDir if set */
+   /* confidence check workingDir if set */
    if (NULL != workingDir && !File_IsDirectory(workingDir)) {
       err = VIX_E_NOT_A_DIRECTORY;
       goto quit;
@@ -2411,7 +2409,7 @@ VixToolsUpdateStartedProgramList(VixToolsStartedProgramState *state)        // I
    spList = startedProcessList;
    while (spList) {
       /*
-       * Sanity check we don't have a duplicate entry -- this should
+       * Confidence check we don't have a duplicate entry -- this should
        * only happen when the OS re-uses the PID before we reap the record
        * of its exit status.
        */
@@ -4983,6 +4981,9 @@ VixToolsInitiateFileTransferFromGuest(VixCommandRequestHeader *requestMsg,    //
    }
 
    resultBuffer = VixToolsPrintFileExtendedInfoEx(filePathName, filePathName);
+   if (*resultBuffer == '\0') {
+      err = VIX_E_FILE_ACCESS_ERROR;
+   }
 
 quit:
    if (impersonatingVMWareUser) {
@@ -5798,7 +5799,7 @@ VixToolsListProcessesEx(VixCommandRequestHeader *requestMsg, // IN
          goto quit;
       }
 
-      // sanity check offset
+      // confidence check offset
       if (listRequest->offset > cachedResult->resultBufferLen) {
          /*
           * Since this isn't user-set, assume any problem is in the
@@ -6582,11 +6583,12 @@ VixToolsListFiles(VixCommandRequestHeader *requestMsg,    // IN
    void *userToken = NULL;
    VixMsgListFilesRequest *listRequest = NULL;
    Bool truncated = FALSE;
-   uint64 offset = 0;
+   int offset = 0;
    Bool listingSingleFile = FALSE;
    const char *pattern = NULL;
    int index = 0;
    int maxResults = 0;
+   int maxOffsetResults = 0;
    int count = 0;
    int remaining = 0;
    int numResults;
@@ -6603,9 +6605,58 @@ VixToolsListFiles(VixCommandRequestHeader *requestMsg,    // IN
    }
 
    listRequest = (VixMsgListFilesRequest *) requestMsg;
-   offset = listRequest->offset;
+
+   /*
+    * listRequest->offset is not part of the interface of ListFilesInGuest API,
+    * listRequest->index and listRequest->maxResults are.
+    *
+    * When hostd sees the results from tools are truncated while requesting
+    * maxResults number of file items, hostd issues another Vigor guest OP
+    * ListFiles with same listRequest->index and listRequest->maxResults but
+    * listRequest->offset set to the items number received. Hostd returns to
+    * API client after seeing the results from tools are no longer truncated.
+    *
+    * listRequest->maxResults defaults to 50 in API spec. If a large number is
+    * passed, truncation can happen when maxBufferSize is not big enough for
+    * the results in one Vigor ListFiles call.
+    *
+    * maxBufferSize = GUESTMSG_MAX_IN_SIZE - vixPrefixDataSize
+    *               = 64 * 1024 - 53
+    */
+   if (listRequest->offset >= (uint64)MAX_INT32) {
+      g_warning("%s: Invalid offset value %"FMT64"u\n",
+                __FUNCTION__, listRequest->offset);
+      err = VIX_E_INVALID_ARG;
+      goto quit;
+   }
+
+   offset = (int)listRequest->offset;
    index = listRequest->index;
    maxResults = listRequest->maxResults;
+   /*
+    * bora/vmx/automation/guestOps.c::GuestOpsListFiles() throws
+    * VIX_E_INVALID_ARG if (index < 0) || (maxResults < 0) is TRUE.
+    */
+   ASSERT(offset >= 0 && index >= 0 && maxResults >= 0);
+
+   /*
+    * Do not fail the API if maxResults is 0, instead, return an empty file
+    * list plus the remaining number of files.
+    */
+   if (maxResults > 0) {
+      if (offset >= maxResults) {
+         g_warning("%s: Invalid offset, offset is %d, maxResults is %d\n",
+                   __FUNCTION__, offset, maxResults);
+         err = VIX_E_INVALID_ARG;
+         goto quit;
+      }
+
+      /*
+       * This is the maximum number of results that can be returned
+       * in this call.
+       */
+      maxOffsetResults = maxResults - offset;
+   }
 
    err = VMAutomationRequestParserGetString(&parser,
                                             listRequest->guestPathNameLength,
@@ -6709,45 +6760,63 @@ VixToolsListFiles(VixCommandRequestHeader *requestMsg,    // IN
    lastGoodResultBufferSize = resultBufferSize;
    ASSERT_NOT_IMPLEMENTED(lastGoodResultBufferSize < maxBufferSize);
 
-   for (fileNum = offset + index;
-        fileNum < numFiles;
-        fileNum++) {
+   /*
+    * If a regex pattern is specified, apply it first. The request index
+    * and offset parameters are referring to the filtered entries.
+    */
+   if (regex) {
+      int newNumFiles = 0;
 
-      currentFileName = fileNameList[fileNum];
-
-      if (regex) {
-         if (!g_regex_match(regex, currentFileName, 0, NULL)) {
-            continue;
+      for (fileNum = 0; fileNum < numFiles; fileNum++) {
+         currentFileName = fileNameList[fileNum];
+         fileNameList[fileNum] = NULL;
+         if (g_regex_match(regex, currentFileName, 0, NULL)) {
+            fileNameList[newNumFiles++] = currentFileName;
+         } else {
+            free(currentFileName);
          }
       }
 
-      if (count < maxResults) {
-         count++;
-      } else {
-         remaining++;
-         continue;   // stop computing buffersize
-      }
-
-      if (listingSingleFile) {
-         resultBufferSize += VixToolsGetFileExtendedInfoLength(currentFileName,
-                                                               currentFileName);
-      } else {
-         pathName = Str_SafeAsprintf(NULL, "%s%s%s", dirPathName, DIRSEPS,
-                                     currentFileName);
-         resultBufferSize += VixToolsGetFileExtendedInfoLength(pathName,
-                                                               currentFileName);
-         free(pathName);
-      }
-
-      if (resultBufferSize < maxBufferSize) {
-         lastGoodResultBufferSize = resultBufferSize;
-      } else {
-         truncated = TRUE;
-         break;
-      }
+      numFiles = newNumFiles;
    }
-   resultBufferSize = lastGoodResultBufferSize;
-   numResults = count;
+
+   if (maxResults > 0) {
+      for (fileNum = index + offset;
+           fileNum < numFiles;
+           fileNum++) {
+
+         currentFileName = fileNameList[fileNum];
+
+         if (listingSingleFile) {
+            resultBufferSize += VixToolsGetFileExtendedInfoLength(
+                                   currentFileName, currentFileName);
+         } else {
+            pathName = Str_SafeAsprintf(NULL, "%s%s%s", dirPathName, DIRSEPS,
+                                        currentFileName);
+            resultBufferSize += VixToolsGetFileExtendedInfoLength(
+                                pathName, currentFileName);
+            free(pathName);
+         }
+
+         if (resultBufferSize < maxBufferSize) {
+            lastGoodResultBufferSize = resultBufferSize;
+            count++;
+            if (count == maxOffsetResults) {
+               remaining = numFiles - fileNum - 1;
+               break;
+            }
+         } else {
+            truncated = TRUE;
+            remaining = numFiles - fileNum;
+            break;
+         }
+      }
+      resultBufferSize = lastGoodResultBufferSize;
+      numResults = count;
+   } else {
+      remaining = (index < numFiles) ? (numFiles - index) : 0;
+      numResults = 0;
+   }
 
    /*
     * Print the result buffer.
@@ -6772,18 +6841,11 @@ VixToolsListFiles(VixCommandRequestHeader *requestMsg,    // IN
    destPtr += Str_Sprintf(destPtr, endDestPtr - destPtr,
                           listFilesRemainingFormatString, remaining);
 
-
-   for (fileNum = offset + index, count = 0;
+   for (fileNum = index + offset, count = 0;
         count < numResults;
         fileNum++) {
 
       currentFileName = fileNameList[fileNum];
-
-      if (regex) {
-         if (!g_regex_match(regex, currentFileName, 0, NULL)) {
-            continue;
-         }
-      }
 
       if (listingSingleFile) {
          pathName = Util_SafeStrdup(currentFileName);
@@ -6792,12 +6854,15 @@ VixToolsListFiles(VixCommandRequestHeader *requestMsg,    // IN
                                      currentFileName);
       }
 
+      /*
+       * When File_GetSize(pathName) fails, the file is not printed.
+       */
       VixToolsPrintFileExtendedInfo(pathName, currentFileName,
                                     &destPtr, endDestPtr);
 
       free(pathName);
       count++;
-   } // for (fileNum = 0; fileNum < lastGoodNumFiles; fileNum++)
+   }
    *destPtr = '\0';
 
 quit:
@@ -7339,7 +7404,40 @@ VixToolsPrintFileExtendedInfo(const char *filePathName,     // IN
    } else if (File_IsDirectory(filePathName)) {
       fileProperties |= VIX_FILE_ATTRIBUTES_DIRECTORY;
    } else if (File_IsFile(filePathName)) {
+      /*
+       * File_GetSize fails and returns -1 when
+       *  - the file does not exist any more
+       *  - the caller has lost permission to access the file
+       *  - the file is exclusively locked at the moment
+       *
+       * The above could happen as a race condition while guest OP
+       * is in progress.
+       */
+#if defined(VMX86_DEBUG)
+      gchar *failThisFile;
+      failThisFile = VMTools_ConfigGetString(gConfDictRef,
+                                             VIX_TOOLS_CONFIG_API_GROUPNAME,
+                                             "failThisFileGetSize",
+                                             NULL);
+      if (g_strcmp0(failThisFile, filePathName) == 0) {
+         g_info("%s: Fail this File_GetSize(%s)...\n",
+                __FUNCTION__, filePathName);
+         fileSize = -1;
+      } else {
+         fileSize = File_GetSize(filePathName);
+      }
+      g_free(failThisFile);
+#else
       fileSize = File_GetSize(filePathName);
+#endif
+      if (fileSize < 0) {
+         g_warning("%s: File_GetSize(%s) returned %"FMT64"d\n",
+                   __FUNCTION__, filePathName, fileSize);
+         /*
+          * Special handling: skip this file item when File_GetSize fails.
+          */
+         return;
+      }
    }
 
 #if !defined(_WIN32)
@@ -7913,29 +8011,6 @@ VixToolsImpersonateUser(VixCommandRequestHeader *requestMsg,   // IN
                                           userToken);
       break;
    }
-   case VIX_USER_CREDENTIAL_ROOT:
-   {
-      if ((requestMsg->requestFlags & VIX_REQUESTMSG_HAS_HASHED_SHARED_SECRET) &&
-          !VixToolsCheckIfAuthenticationTypeEnabled(gConfDictRef,
-                                            VIX_TOOLS_CONFIG_AUTHTYPE_AGENTS)) {
-          /*
-           * Don't accept hashed shared secret if disabled.
-           */
-          g_message("%s: Requested authentication type has been disabled.\n",
-                    __FUNCTION__);
-          err = VIX_E_GUEST_AUTHTYPE_DISABLED;
-          goto done;
-      }
-   }
-   // fall through
-
-   case VIX_USER_CREDENTIAL_CONSOLE_USER:
-      err = VixToolsImpersonateUserImplEx(NULL,
-                                          credentialType,
-                                          NULL,
-                                          loadUserProfile,
-                                          userToken);
-      break;
    case VIX_USER_CREDENTIAL_NAME_PASSWORD:
    case VIX_USER_CREDENTIAL_NAME_PASSWORD_OBFUSCATED:
    case VIX_USER_CREDENTIAL_NAMED_INTERACTIVE_USER:
@@ -7971,6 +8046,7 @@ VixToolsImpersonateUser(VixCommandRequestHeader *requestMsg,   // IN
    }
 #if SUPPORT_VGAUTH
    case VIX_USER_CREDENTIAL_SAML_BEARER_TOKEN:
+   case VIX_USER_CREDENTIAL_SAML_BEARER_TOKEN_HOST_VERIFIED:
    {
       VixCommandSAMLToken *samlStruct =
          (VixCommandSAMLToken *) credentialField;
@@ -8105,36 +8181,6 @@ VixToolsImpersonateUserImplEx(char const *credentialTypeStr,         // IN
       }
 
       /*
-       * If the VMX asks to be root, then we allow them.
-       * The VMX will make sure that only it will pass this value in,
-       * and only when the VM and host are configured to allow this.
-       */
-      if ((VIX_USER_CREDENTIAL_ROOT == credentialType)
-            && (thisProcessRunsAsRoot)) {
-         *userToken = PROCESS_CREATOR_USER_TOKEN;
-
-         gImpersonatedUsername = Util_SafeStrdup("_ROOT_");
-         err = VIX_OK;
-         goto quit;
-      }
-
-      /*
-       * If the VMX asks to be root, then we allow them.
-       * The VMX will make sure that only it will pass this value in,
-       * and only when the VM and host are configured to allow this.
-       *
-       * XXX This has been deprecated XXX
-       */
-      if ((VIX_USER_CREDENTIAL_CONSOLE_USER == credentialType)
-            && ((allowConsoleUserOps) || !(thisProcessRunsAsRoot))) {
-         *userToken = PROCESS_CREATOR_USER_TOKEN;
-
-         gImpersonatedUsername = Util_SafeStrdup("_CONSOLE_USER_NAME_");
-         err = VIX_OK;
-         goto quit;
-      }
-
-      /*
        * If the VMX asks us to run commands in the context of the current
        * user, make sure that the user who requested the command is the
        * same as the current user.
@@ -8195,10 +8241,16 @@ VixToolsImpersonateUserImplEx(char const *credentialTypeStr,         // IN
       }
 
 #if SUPPORT_VGAUTH
-      else if (VIX_USER_CREDENTIAL_SAML_BEARER_TOKEN == credentialType) {
+      else if ((VIX_USER_CREDENTIAL_SAML_BEARER_TOKEN == credentialType)
+         || (VIX_USER_CREDENTIAL_SAML_BEARER_TOKEN_HOST_VERIFIED == credentialType)
+         ) {
          if (GuestAuthEnabled()) {
+            Bool hostVerified =
+               (credentialType == VIX_USER_CREDENTIAL_SAML_BEARER_TOKEN_HOST_VERIFIED)
+               ? TRUE : FALSE;
             err = GuestAuthSAMLAuthenticateAndImpersonate(obfuscatedNamePassword,
                                                           loadUserProfile,
+                                                          hostVerified,
                                                           userToken);
          } else {
             err = VIX_E_NOT_SUPPORTED;
@@ -10817,50 +10869,6 @@ VixToolsCheckIfVixCommandEnabled(int opcode,                          // IN
 /*
  *-----------------------------------------------------------------------------
  *
- * VixToolsCheckIfAuthenticationTypeEnabled --
- *
- *    Checks to see if a given authentication type has been
- *    disabled via the tools configuration.
- *
- * Return value:
- *    TRUE if enabled, FALSE otherwise.
- *
- * Side effects:
- *    None
- *
- *-----------------------------------------------------------------------------
- */
-
-static Bool
-VixToolsCheckIfAuthenticationTypeEnabled(GKeyFile *confDictRef,     // IN
-                                         const char *typeName)      // IN
-{
-   char authnDisabledName[64]; // Authentication.<AuthenticationType>.disabled
-   gboolean disabled;
-
-   Str_Snprintf(authnDisabledName, sizeof(authnDisabledName),
-                VIX_TOOLS_CONFIG_API_AUTHENTICATION ".%s.disabled",
-                typeName);
-
-   ASSERT(confDictRef != NULL);
-
-   /*
-    * XXX Skip doing the strcmp() to verify the auth type since we only
-    * have the one typeName (VIX_TOOLS_CONFIG_AUTHTYPE_AGENTS), and default
-    * it to VIX_TOOLS_CONFIG_INFRA_AGENT_DISABLED_DEFAULT.
-    */
-   disabled = VMTools_ConfigGetBoolean(confDictRef,
-                                       VIX_TOOLS_CONFIG_API_GROUPNAME,
-                                       authnDisabledName,
-                                       VIX_TOOLS_CONFIG_INFRA_AGENT_DISABLED_DEFAULT);
-
-   return !disabled;
-}
-
-
-/*
- *-----------------------------------------------------------------------------
- *
  * VixTools_ProcessVixCommand --
  *
  *
@@ -11862,6 +11870,7 @@ VixError
 GuestAuthSAMLAuthenticateAndImpersonate(
    char const *obfuscatedNamePassword, // IN
    Bool loadUserProfile,               // IN
+   Bool hostVerified,                  // IN
    void **userToken)                   // OUT
 {
 #if SUPPORT_VGAUTH
@@ -11872,6 +11881,7 @@ GuestAuthSAMLAuthenticateAndImpersonate(
    VGAuthError vgErr;
    VGAuthUserHandle *newHandle = NULL;
    VGAuthExtraParams extraParams[1];
+   VGAuthExtraParams hostVerfiedParams[1];
    Bool impersonated = FALSE;
 
    extraParams[0].name = VGAUTH_PARAM_LOAD_USER_PROFILE;
@@ -11893,11 +11903,14 @@ GuestAuthSAMLAuthenticateAndImpersonate(
       goto done;
    }
 
+   hostVerfiedParams[0].name = VGAUTH_PARAM_SAML_HOST_VERIFIED;
+   hostVerfiedParams[0].value = hostVerified ? VGAUTH_PARAM_VALUE_TRUE :
+                                               VGAUTH_PARAM_VALUE_FALSE;
    vgErr = VGAuth_ValidateSamlBearerToken(ctx,
                                           token,
                                           username,
-                                          0,
-                                          NULL,
+                                          (int)ARRAYSIZE(hostVerfiedParams),
+                                          hostVerfiedParams,
                                           &newHandle);
 #if ALLOW_LOCAL_SYSTEM_IMPERSONATION_BYPASS
    /*
@@ -11943,6 +11956,7 @@ GuestAuthSAMLAuthenticateAndImpersonate(
                                        token,
                                        username,
                                        gCurrentUsername,
+                                       hostVerified,
                                        userToken,
                                        &currentUserHandle);
       goto done;

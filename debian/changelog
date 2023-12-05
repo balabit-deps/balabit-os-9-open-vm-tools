@@ -1,3 +1,68 @@
+open-vm-tools (2:12.3.5-3~ubuntu0.22.04.1) jammy; urgency=medium
+
+  * Backport recent open-vm-tools release v12.3.5
+    (LP: #2028420)
+
+ -- Bryce Harrington <bryce@canonical.com>  Tue, 05 Dec 2023 13:18:04 -0800
+
+open-vm-tools (2:12.3.5-3) unstable; urgency=medium
+
+  * [7699f7a] Fix typo in last upload
+
+ -- Bernd Zeimetz <bzed@debian.org>  Mon, 27 Nov 2023 16:29:44 +0100
+
+open-vm-tools (2:12.3.5-2) unstable; urgency=medium
+
+  * [80ed173] Disable arm cross-build
+  * [61a0f4d] (Temporarily) build with diffoscope
+  * [d929c44] Fix containerinfo plugin directory.
+    Thanks to John Wolfe (Closes: #1056205)
+
+ -- Bernd Zeimetz <bzed@debian.org>  Mon, 27 Nov 2023 15:50:13 +0100
+
+open-vm-tools (2:12.3.5-1) unstable; urgency=high
+
+  * [1b07bee] Remove api doc build dir with dh_clean.
+    Thanks to Lucas Nussbaum (Closes: #1046018)
+  * [de2e0ba] New upstream version 12.3.5 (Closes: #1054662)
+    - New upstream release fixes two CVEs:
+      CVE-2023-34059 CVE-2023-34058
+      Closes: #1054666
+
+ -- Bernd Zeimetz <bzed@debian.org>  Sat, 28 Oct 2023 01:41:22 +0200
+
+open-vm-tools (2:12.3.0-1) unstable; urgency=high
+
+  * [4ed4be4] New upstream version 12.3.0
+    (Closes: #1050972)
+    CVE-2023-20900
+    Adressing this CVE also Closes: #1050970
+    There are no new features in the open-vm-tools 12.3.0 release. This is
+    primarily a maintenance release, details can be found at
+    https://github.com/vmware/open-vm-tools/blob/stable-12.3.0/ReleaseNotes.md
+  * [779d338] drop d/p/debian/grpc_1.51: no more needed
+
+ -- Christian Ehrhardt <christian.ehrhardt@canonical.com>  Wed, 06 Sep 2023 09:00:51 +0200
+
+open-vm-tools (2:12.2.5-1) unstable; urgency=medium
+
+  * [8c0c33f] New upstream version 12.2.5
+    (Closes: #1037546)
+    CVE-2023-20867
+  * [232810e] d/p/*: add DEP-3 patch headers
+
+ -- Christian Ehrhardt <christian.ehrhardt@canonical.com>  Tue, 11 Jul 2023 13:22:07 +0200
+
+open-vm-tools (2:12.2.0-1) unstable; urgency=medium
+
+  * [bebda7c] New upstream version 12.2.0
+    (Closes: #1032607)
+  * [d266aa7] Add libabsl-dev as explicit build-dependency.
+    Not needed in Debian, but let's support the Deepin package maintainer.
+    (Closes: #1032305)
+
+ -- Bernd Zeimetz <bzed@debian.org>  Tue, 14 Mar 2023 19:12:00 +0100
+
 open-vm-tools (2:12.1.5-3~ubuntu0.22.04.4) jammy-security; urgency=medium
 
   * SECURITY UPDATE: SAML Bypass
