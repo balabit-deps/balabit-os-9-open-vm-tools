@@ -1,5 +1,5 @@
 /*********************************************************
- * Copyright (c) 1998-2022 VMware, Inc. All rights reserved.
+ * Copyright (c) 1998-2023 VMware, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
@@ -27,6 +27,7 @@
 /* KEEP IN SORTED ORDER! */
 
 #define LOGLEVEL_USER(LOGLEVEL_VAR) \
+   LOGLEVEL_VAR(9pfs), \
    LOGLEVEL_VAR(acpi), \
    LOGLEVEL_VAR(acpiGPE), \
    LOGLEVEL_VAR(ahci), \
@@ -104,8 +105,6 @@
    LOGLEVEL_VAR(fsresx), \
    LOGLEVEL_VAR(ftConfig), /*lib/ftConfig */ \
    LOGLEVEL_VAR(ftcpt), \
-   LOGLEVEL_VAR(gmm), \
-   LOGLEVEL_VAR(gpuManager), \
    LOGLEVEL_VAR(grainTrack), \
    LOGLEVEL_VAR(grm), \
    LOGLEVEL_VAR(guestAppMonitor), \
@@ -286,6 +285,7 @@
    LOGLEVEL_VAR(vdpPlugin), \
    LOGLEVEL_VAR(vdtiPciCfgSpc), \
    LOGLEVEL_VAR(vflash), \
+   LOGLEVEL_VAR(vg), \
    LOGLEVEL_VAR(vga), \
    LOGLEVEL_VAR(vide), \
    LOGLEVEL_VAR(viewClient), \

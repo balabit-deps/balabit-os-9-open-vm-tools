@@ -1,5 +1,5 @@
 /*********************************************************
- * Copyright (C) 1998-2022 VMware, Inc. All rights reserved.
+ * Copyright (C) 1998-2023 VMware, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
@@ -43,6 +43,14 @@
 #pragma warning(disable : 4255)      // disable no-prototype() to (void) warning
 #include <intrin.h>
 #pragma warning(pop)
+#endif
+
+#ifdef __wasm__
+#define VM_ATOMIC_USE_C11
+#endif
+
+#ifdef VM_ATOMIC_USE_C11
+#include <stdatomic.h>
 #endif
 
 #include "vm_basic_types.h"
@@ -142,8 +150,7 @@ typedef ALIGNED(8) struct Atomic_uint64 {
    volatile uint64 value;
 } Atomic_uint64;
 
-#if defined __GNUC__ && defined VM_64BIT && \
-     (defined __GCC_HAVE_SYNC_COMPARE_AND_SWAP_16 || defined VM_ARM_64)
+#ifdef VM_HAS_INT128
 typedef ALIGNED(16) struct Atomic_uint128 {
    volatile uint128 value;
 } Atomic_uint128;
@@ -201,10 +208,8 @@ Atomic_VolatileToAtomic64(volatile uint64 *var)  // IN:
  * registers.
  */
 
-#if defined __GNUC__ && defined VM_ARM_32
 /* Force the link step to fail for unimplemented functions. */
 extern int AtomicUndefined(void const *);
-#endif
 
 
 /*
@@ -212,30 +217,31 @@ extern int AtomicUndefined(void const *);
  *
  * Atomic_ReadIfEqualWrite128 --
  *
- *      Compare and exchange a 16 byte tuple.
+ *      Compare exchange: Read variable, if equal to oldVal, write newVal
  *
  * Results:
- *      old value
+ *      The value that was compared against oldVal.
  *
  * Side effects:
- *      None
+ *      None.
  *
  *-----------------------------------------------------------------------------
  */
-#if defined __GNUC__ && defined VM_64BIT && \
-     (defined __GCC_HAVE_SYNC_COMPARE_AND_SWAP_16 || defined VM_ARM_64)
+
+#ifdef VM_HAS_INT128
 static INLINE uint128
 Atomic_ReadIfEqualWrite128(Atomic_uint128 *ptr,   // IN/OUT
                            uint128        oldVal, // IN
                            uint128        newVal) // IN
 {
-#if defined VM_ARM_64
+#if defined __GNUC__ && defined VM_ARM_64
+#define VM_HAS_ATOMIC_READIFEQUALWRITE128 // This function can be used.
    /*
     * Don't use __sync_val_compare_and_swap, as this cannot magically
     * use the right (LL/SC vs LSE) atomics without -moutline-atomics.
     */
 #if __GNUC__ >= 9
-   if (Atomic_HaveLSE) {
+   if (Atomic_HaveLse()) {
       SMP_RW_BARRIER_RW();
       __asm__ __volatile__(
          ".arch armv8.2-a            \n\t"
@@ -280,8 +286,11 @@ Atomic_ReadIfEqualWrite128(Atomic_uint128 *ptr,   // IN/OUT
       SMP_RW_BARRIER_RW();
       return res.raw;
    }
-#elif __GCC_HAVE_SYNC_COMPARE_AND_SWAP_16
+#elif defined __GNUC__ && defined __GCC_HAVE_SYNC_COMPARE_AND_SWAP_16
+#define VM_HAS_ATOMIC_READIFEQUALWRITE128 // This function can be used.
    return __sync_val_compare_and_swap(&ptr->value, oldVal, newVal);
+#else
+   return AtomicUndefined(ptr + oldVal + newVal);
 #endif
 }
 #endif
@@ -308,7 +317,9 @@ Atomic_Read8(Atomic_uint8 const *var)  // IN:
 {
    uint8 val;
 
-#if defined __GNUC__ && defined VM_ARM_32
+#if defined VM_ATOMIC_USE_C11
+   val = atomic_load((const _Atomic uint8 *)&var->value);
+#elif defined __GNUC__ && defined VM_ARM_32
    val = AtomicUndefined(var);
 #elif defined __GNUC__ && defined VM_ARM_64
    val = _VMATOM_X(R, 8, &var->value);
@@ -321,7 +332,7 @@ Atomic_Read8(Atomic_uint8 const *var)  // IN:
 #elif defined _MSC_VER
    val = var->value;
 #else
-#error No compiler defined for Atomic_Read8
+#error Atomic_Read8 not implemented
 #endif
 
    return val;
@@ -348,7 +359,9 @@ static INLINE uint8
 Atomic_ReadWrite8(Atomic_uint8 *var,  // IN/OUT:
                   uint8 val)          // IN:
 {
-#if defined __GNUC__ && defined VM_ARM_32
+#if defined VM_ATOMIC_USE_C11
+   return atomic_exchange((_Atomic uint8 *)&var->value, val);
+#elif defined __GNUC__ && defined VM_ARM_32
    return AtomicUndefined(var + val);
 #elif defined __GNUC__ && defined VM_ARM_64
    return _VMATOM_X(RW, 8, TRUE, &var->value, val);
@@ -362,9 +375,10 @@ Atomic_ReadWrite8(Atomic_uint8 *var,  // IN/OUT:
    );
    return val;
 #elif defined _MSC_VER
+   ASSERT_ON_COMPILE(sizeof (volatile char) == sizeof var->value);
    return _InterlockedExchange8((volatile char *)&var->value, val);
 #else
-#error No compiler defined for Atomic_ReadWrite8
+#error Atomic_ReadWrite8 not implemented
 #endif
 }
 
@@ -389,7 +403,9 @@ static INLINE void
 Atomic_Write8(Atomic_uint8 *var,  // IN/OUT:
               uint8 val)          // IN:
 {
-#if defined __GNUC__ && defined VM_ARM_32
+#if defined VM_ATOMIC_USE_C11
+   atomic_store((_Atomic uint8 *)&var->value, val);
+#elif defined __GNUC__ && defined VM_ARM_32
    AtomicUndefined(var + val);
 #elif defined __GNUC__ && defined VM_ARM_64
    _VMATOM_X(W, 8, &var->value, val);
@@ -402,7 +418,7 @@ Atomic_Write8(Atomic_uint8 *var,  // IN/OUT:
 #elif defined _MSC_VER
    var->value = val;
 #else
-#error No compiler defined for Atomic_Write8
+#error Atomic_Write8 not implemented
 #endif
 }
 
@@ -415,10 +431,10 @@ Atomic_Write8(Atomic_uint8 *var,  // IN/OUT:
  *      Compare exchange: Read variable, if equal to oldVal, write newVal.
  *
  * Results:
- *      The value of the atomic variable before the write.
+ *      The value that was compared against oldVal.
  *
  * Side effects:
- *      The variable may be modified.
+ *      None.
  *
  *-----------------------------------------------------------------------------
  */
@@ -428,7 +444,11 @@ Atomic_ReadIfEqualWrite8(Atomic_uint8 *var,  // IN/OUT:
                          uint8 oldVal,       // IN:
                          uint8 newVal)       // IN:
 {
-#if defined __GNUC__ && defined VM_ARM_32
+#if defined VM_ATOMIC_USE_C11
+   atomic_compare_exchange_strong(
+      (_Atomic uint8 *)&var->value, &oldVal, newVal);
+   return oldVal;
+#elif defined __GNUC__ && defined VM_ARM_32
    return AtomicUndefined(var + oldVal + newVal);
 #elif defined __GNUC__ && defined VM_ARM_64
    return _VMATOM_X(RIFEQW, 8, TRUE, &var->value, oldVal, newVal);
@@ -446,10 +466,11 @@ Atomic_ReadIfEqualWrite8(Atomic_uint8 *var,  // IN/OUT:
 
    return val;
 #elif defined _MSC_VER
+   ASSERT_ON_COMPILE(sizeof (volatile char) == sizeof var->value);
    return _InterlockedCompareExchange8((volatile char *)&var->value,
                                        newVal, oldVal);
 #else
-#error No compiler defined for Atomic_ReadIfEqualWrite8
+#error Atomic_ReadIfEqualWrite8 not implemented
 #endif
 }
 
@@ -476,7 +497,9 @@ Atomic_ReadAnd8(Atomic_uint8 *var, // IN/OUT
 {
    uint8 res;
 
-#if defined __GNUC__ && defined VM_ARM_64
+#if defined VM_ATOMIC_USE_C11
+   res = atomic_fetch_and((_Atomic uint8 *)&var->value, val);
+#elif defined __GNUC__ && defined VM_ARM_64
    res = _VMATOM_X(ROP, 8, TRUE, &var->value, and, val);
 #else
    do {
@@ -538,7 +561,9 @@ Atomic_ReadOr8(Atomic_uint8 *var, // IN/OUT
 {
    uint8 res;
 
-#if defined __GNUC__ && defined VM_ARM_64
+#if defined VM_ATOMIC_USE_C11
+   res = atomic_fetch_or((_Atomic uint8 *)&var->value, val);
+#elif defined __GNUC__ && defined VM_ARM_64
    res = _VMATOM_X(ROP, 8, TRUE, &var->value, orr, val);
 #else
    do {
@@ -600,7 +625,9 @@ Atomic_ReadXor8(Atomic_uint8 *var, // IN/OUT
 {
    uint8 res;
 
-#if defined __GNUC__ && defined VM_ARM_64
+#if defined VM_ATOMIC_USE_C11
+   res = atomic_fetch_xor((_Atomic uint8 *)&var->value, val);
+#elif defined __GNUC__ && defined VM_ARM_64
    res = _VMATOM_X(ROP, 8, TRUE, &var->value, eor, val);
 #else
    do {
@@ -662,7 +689,9 @@ Atomic_ReadAdd8(Atomic_uint8 *var, // IN/OUT
 {
    uint8 res;
 
-#if defined __GNUC__ && defined VM_ARM_64
+#if defined VM_ATOMIC_USE_C11
+   res = atomic_fetch_add((_Atomic uint8 *)&var->value, val);
+#elif defined __GNUC__ && defined VM_ARM_64
    res = _VMATOM_X(ROP, 8, TRUE, &var->value, add, val);
 #else
    do {
@@ -722,7 +751,9 @@ static INLINE void
 Atomic_Sub8(Atomic_uint8 *var, // IN/OUT
             uint8 val)         // IN
 {
-#if defined __GNUC__ && defined VM_ARM_64
+#if defined VM_ATOMIC_USE_C11
+   atomic_fetch_sub((_Atomic uint8 *)&var->value, val);
+#elif defined __GNUC__ && defined VM_ARM_64
    _VMATOM_X(OP, 8, TRUE, &var->value, sub, val);
 #else
    Atomic_Add8(var, -val);
@@ -847,7 +878,9 @@ Atomic_Read32(Atomic_uint32 const *var) // IN
    ASSERT(((uintptr_t)var % 4) == 0);
 #endif
 
-#if defined __GNUC__
+#if defined VM_ATOMIC_USE_C11
+   value = atomic_load((_Atomic uint32 *)&var->value);
+#elif defined __GNUC__
    /*
     * Use inline assembler to force using a single load instruction to
     * ensure that the compiler doesn't split a transfer operation into multiple
@@ -878,7 +911,7 @@ Atomic_Read32(Atomic_uint32 const *var) // IN
 
    value = var->value;
 #else
-#error No compiler defined for Atomic_Read
+#error Atomic_Read32 not implemented
 #endif
 
    return value;
@@ -906,7 +939,9 @@ static INLINE uint32
 Atomic_ReadWrite32(Atomic_uint32 *var, // IN/OUT
                    uint32 val)         // IN
 {
-#if defined __GNUC__
+#if defined VM_ATOMIC_USE_C11
+   return atomic_exchange((_Atomic uint32 *)&var->value, val);
+#elif defined __GNUC__
 #ifdef VM_ARM_V7
    uint32 retVal;
    uint32 res;
@@ -940,9 +975,10 @@ Atomic_ReadWrite32(Atomic_uint32 *var, // IN/OUT
    return val;
 #endif /* VM_X86_ANY */
 #elif defined _MSC_VER
+   ASSERT_ON_COMPILE(sizeof (long) == sizeof var->value);
    return _InterlockedExchange((long *)&var->value, (long)val);
 #else
-#error No compiler defined for Atomic_ReadWrite
+#error Atomic_ReadWrite32 not implemented
 #endif // __GNUC__
 }
 #define Atomic_ReadWrite Atomic_ReadWrite32
@@ -972,7 +1008,9 @@ Atomic_Write32(Atomic_uint32 *var, // OUT
    ASSERT(((uintptr_t)var % 4) == 0);
 #endif
 
-#if defined __GNUC__
+#if defined VM_ATOMIC_USE_C11
+   atomic_store((_Atomic uint32 *)&var->value, val);
+#elif defined __GNUC__
 #if defined VM_ARM_64
    _VMATOM_X(W, 32, &var->value, val);
 #elif defined VM_ARM_32
@@ -1024,7 +1062,7 @@ Atomic_Write32(Atomic_uint32 *var, // OUT
 
    var->value = val;
 #else
-#error No compiler defined for Atomic_Write
+#error Atomic_Write32 not implemented
 #endif
 }
 #define Atomic_Write Atomic_Write32
@@ -1038,10 +1076,10 @@ Atomic_Write32(Atomic_uint32 *var, // OUT
  *      Compare exchange: Read variable, if equal to oldVal, write newVal
  *
  * Results:
- *      The value of the atomic variable before the write.
+ *      The value that was compared against oldVal.
  *
  * Side effects:
- *      The variable may be modified.
+ *      None.
  *
  *-----------------------------------------------------------------------------
  */
@@ -1051,7 +1089,11 @@ Atomic_ReadIfEqualWrite32(Atomic_uint32 *var, // IN/OUT
                           uint32 oldVal,      // IN
                           uint32 newVal)      // IN
 {
-#if defined __GNUC__
+#if defined VM_ATOMIC_USE_C11
+   atomic_compare_exchange_strong(
+      (_Atomic uint32 *)&var->value, &oldVal, newVal);
+   return oldVal;
+#elif defined __GNUC__
 #ifdef VM_ARM_V7
    uint32 retVal;
    uint32 res;
@@ -1090,17 +1132,18 @@ Atomic_ReadIfEqualWrite32(Atomic_uint32 *var, // IN/OUT
    return val;
 #endif /* VM_X86_ANY */
 #elif defined _MSC_VER
+   ASSERT_ON_COMPILE(sizeof (long) == sizeof var->value);
    return _InterlockedCompareExchange((long *)&var->value,
                                       (long)newVal,
                                       (long)oldVal);
 #else
-#error No compiler defined for Atomic_ReadIfEqualWrite
+#error Atomic_ReadIfEqualWrite32 not implemented
 #endif
 }
 #define Atomic_ReadIfEqualWrite Atomic_ReadIfEqualWrite32
 
 
-#if defined VM_64BIT || defined VM_ARM_V7
+#if defined VM_64BIT || defined VM_ARM_V7 || defined VM_ATOMIC_USE_C11
 /*
  *-----------------------------------------------------------------------------
  *
@@ -1109,10 +1152,10 @@ Atomic_ReadIfEqualWrite32(Atomic_uint32 *var, // IN/OUT
  *      Compare exchange: Read variable, if equal to oldVal, write newVal
  *
  * Results:
- *      The value of the atomic variable before the write.
+ *      The value that was compared against oldVal.
  *
  * Side effects:
- *      The variable may be modified.
+ *      None.
  *
  *-----------------------------------------------------------------------------
  */
@@ -1122,7 +1165,11 @@ Atomic_ReadIfEqualWrite64(Atomic_uint64 *var, // IN/OUT
                           uint64 oldVal,      // IN
                           uint64 newVal)      // IN
 {
-#if defined __GNUC__
+#if defined VM_ATOMIC_USE_C11
+   atomic_compare_exchange_strong(
+      (_Atomic uint64 *)&var->value, &oldVal, newVal);
+   return oldVal;
+#elif defined __GNUC__
 #ifdef VM_ARM_V7
    uint64 retVal;
    uint32 res;
@@ -1182,11 +1229,12 @@ Atomic_ReadIfEqualWrite64(Atomic_uint64 *var, // IN/OUT
    return val;
 #endif //VM_ARM_V7
 #elif defined _MSC_VER
+   ASSERT_ON_COMPILE(sizeof (__int64) == sizeof var->value);
    return _InterlockedCompareExchange64((__int64 *)&var->value,
                                         (__int64)newVal,
                                         (__int64)oldVal);
 #else
-#error No compiler defined for Atomic_ReadIfEqualWrite64
+#error Atomic_ReadIfEqualWrite64 not implemented
 #endif
 }
 #endif
@@ -1212,7 +1260,9 @@ static INLINE void
 Atomic_And32(Atomic_uint32 *var, // IN/OUT
              uint32 val)         // IN
 {
-#if defined __GNUC__
+#if defined VM_ATOMIC_USE_C11
+   atomic_fetch_and((_Atomic uint32 *)&var->value, val);
+#elif defined __GNUC__
 #ifdef VM_ARM_V7
    uint32 res;
    uint32 tmp;
@@ -1243,9 +1293,10 @@ Atomic_And32(Atomic_uint32 *var, // IN/OUT
    );
 #endif /* VM_X86_ANY */
 #elif defined _MSC_VER
+   ASSERT_ON_COMPILE(sizeof (long) == sizeof var->value);
    _InterlockedAnd((long *)&var->value, (long)val);
 #else
-#error No compiler defined for Atomic_And
+#error Atomic_And32 not implemented
 #endif
 }
 #define Atomic_And Atomic_And32
@@ -1271,7 +1322,9 @@ static INLINE void
 Atomic_Or32(Atomic_uint32 *var, // IN/OUT
             uint32 val)         // IN
 {
-#if defined __GNUC__
+#if defined VM_ATOMIC_USE_C11
+   atomic_fetch_or((_Atomic uint32 *)&var->value, val);
+#elif defined __GNUC__
 #ifdef VM_ARM_V7
    uint32 res;
    uint32 tmp;
@@ -1302,9 +1355,10 @@ Atomic_Or32(Atomic_uint32 *var, // IN/OUT
    );
 #endif /* VM_X86_ANY */
 #elif defined _MSC_VER
+   ASSERT_ON_COMPILE(sizeof (long) == sizeof var->value);
    _InterlockedOr((long *)&var->value, (long)val);
 #else
-#error No compiler defined for Atomic_Or
+#error Atomic_Or32 not implemented
 #endif
 }
 #define Atomic_Or Atomic_Or32
@@ -1330,7 +1384,9 @@ static INLINE void
 Atomic_Xor32(Atomic_uint32 *var, // IN/OUT
              uint32 val)         // IN
 {
-#if defined __GNUC__
+#if defined VM_ATOMIC_USE_C11
+   atomic_fetch_xor((_Atomic uint32 *)&var->value, val);
+#elif defined __GNUC__
 #ifdef VM_ARM_V7
    uint32 res;
    uint32 tmp;
@@ -1361,9 +1417,10 @@ Atomic_Xor32(Atomic_uint32 *var, // IN/OUT
    );
 #endif /* VM_X86_ANY */
 #elif defined _MSC_VER
+   ASSERT_ON_COMPILE(sizeof (long) == sizeof var->value);
    _InterlockedXor((long *)&var->value, (long)val);
 #else
-#error No compiler defined for Atomic_Xor
+#error Atomic_Xor32 not implemented
 #endif
 }
 #define Atomic_Xor Atomic_Xor32
@@ -1390,7 +1447,9 @@ static INLINE void
 Atomic_Xor64(Atomic_uint64 *var, // IN/OUT
              uint64 val)         // IN
 {
-#if defined __GNUC__
+#if defined VM_ATOMIC_USE_C11
+   atomic_fetch_xor((_Atomic uint64 *)&var->value, val);
+#elif defined __GNUC__
 #if defined VM_ARM_64
    _VMATOM_X(OP, 64, TRUE, &var->value, eor, val);
 #else /* VM_X86_64 */
@@ -1403,9 +1462,10 @@ Atomic_Xor64(Atomic_uint64 *var, // IN/OUT
    );
 #endif
 #elif defined _MSC_VER
+   ASSERT_ON_COMPILE(sizeof (__int64) == sizeof var->value);
    _InterlockedXor64((__int64 *)&var->value, (__int64)val);
 #else
-#error No compiler defined for Atomic_Xor64
+#error Atomic_Xor64 not implemented
 #endif
 }
 #endif
@@ -1431,7 +1491,9 @@ static INLINE void
 Atomic_Add32(Atomic_uint32 *var, // IN/OUT
              uint32 val)         // IN
 {
-#if defined __GNUC__
+#if defined VM_ATOMIC_USE_C11
+   atomic_fetch_add((_Atomic uint32 *)&var->value, val);
+#elif defined __GNUC__
 #ifdef VM_ARM_V7
    uint32 res;
    uint32 tmp;
@@ -1462,9 +1524,10 @@ Atomic_Add32(Atomic_uint32 *var, // IN/OUT
    );
 #endif /* VM_X86_ANY */
 #elif defined _MSC_VER
+   ASSERT_ON_COMPILE(sizeof (long) == sizeof var->value);
    _InterlockedExchangeAdd((long *)&var->value, (long)val);
 #else
-#error No compiler defined for Atomic_Add
+#error Atomic_Add32 not implemented
 #endif
 }
 #define Atomic_Add Atomic_Add32
@@ -1490,7 +1553,9 @@ static INLINE void
 Atomic_Sub32(Atomic_uint32 *var, // IN/OUT
              uint32 val)         // IN
 {
-#if defined __GNUC__
+#if defined VM_ATOMIC_USE_C11
+   atomic_fetch_sub((_Atomic uint32 *)&var->value, val);
+#elif defined __GNUC__
 #ifdef VM_ARM_V7
    uint32 res;
    uint32 tmp;
@@ -1534,10 +1599,11 @@ Atomic_Sub32(Atomic_uint32 *var, // IN/OUT
     */
 #   pragma warning(push)
 #   pragma warning(disable: 4146)
+   ASSERT_ON_COMPILE(sizeof (long) == sizeof var->value);
    _InterlockedExchangeAdd((long *)&var->value, (long)-val);
 #   pragma warning(pop)
 #else
-#error No compiler defined for Atomic_Sub
+#error Atomic_Sub32 not implemented
 #endif
 }
 #define Atomic_Sub Atomic_Sub32
@@ -1562,7 +1628,9 @@ Atomic_Sub32(Atomic_uint32 *var, // IN/OUT
 static INLINE void
 Atomic_Inc32(Atomic_uint32 *var) // IN/OUT
 {
-#ifdef __GNUC__
+#if defined VM_ATOMIC_USE_C11
+   Atomic_Add32(var, 1);
+#elif defined __GNUC__
 #if defined VM_ARM_ANY
    Atomic_Add32(var, 1);
 #else /* VM_X86_ANY */
@@ -1575,9 +1643,10 @@ Atomic_Inc32(Atomic_uint32 *var) // IN/OUT
    );
 #endif /* VM_X86_ANY */
 #elif defined _MSC_VER
+   ASSERT_ON_COMPILE(sizeof (long) == sizeof var->value);
    _InterlockedIncrement((long *)&var->value);
 #else
-#error No compiler defined for Atomic_Inc
+#error Atomic_Inc32 not implemented
 #endif
 }
 #define Atomic_Inc Atomic_Inc32
@@ -1602,7 +1671,9 @@ Atomic_Inc32(Atomic_uint32 *var) // IN/OUT
 static INLINE void
 Atomic_Dec32(Atomic_uint32 *var) // IN/OUT
 {
-#ifdef __GNUC__
+#if defined VM_ATOMIC_USE_C11
+   Atomic_Sub32(var, 1);
+#elif defined __GNUC__
 #if defined VM_ARM_ANY
    Atomic_Sub32(var, 1);
 #else /* VM_X86_ANY */
@@ -1615,9 +1686,10 @@ Atomic_Dec32(Atomic_uint32 *var) // IN/OUT
    );
 #endif /* VM_X86_ANY */
 #elif defined _MSC_VER
+   ASSERT_ON_COMPILE(sizeof (long) == sizeof var->value);
    _InterlockedDecrement((long *)&var->value);
 #else
-#error No compiler defined for Atomic_Dec
+#error Atomic_Dec32 not implemented
 #endif
 }
 #define Atomic_Dec Atomic_Dec32
@@ -1651,7 +1723,9 @@ Atomic_ReadOr32(Atomic_uint32 *var, // IN/OUT
 {
    uint32 res;
 
-#if defined __GNUC__ && defined VM_ARM_64
+#if defined VM_ATOMIC_USE_C11
+   res = atomic_fetch_or((_Atomic uint32 *)&var->value, val);
+#elif defined __GNUC__ && defined VM_ARM_64
    res = _VMATOM_X(ROP, 32, TRUE, &var->value, orr, val);
 #else
    do {
@@ -1685,7 +1759,9 @@ Atomic_ReadAnd32(Atomic_uint32 *var, // IN/OUT
 {
    uint32 res;
 
-#if defined __GNUC__ && defined VM_ARM_64
+#if defined VM_ATOMIC_USE_C11
+   res = atomic_fetch_and((_Atomic uint32 *)&var->value, val);
+#elif defined __GNUC__ && defined VM_ARM_64
    res = _VMATOM_X(ROP, 32, TRUE, &var->value, and, val);
 #else
    do {
@@ -1720,7 +1796,9 @@ Atomic_ReadOr64(Atomic_uint64 *var, // IN/OUT
 {
    uint64 res;
 
-#if defined __GNUC__ && defined VM_ARM_64
+#if defined VM_ATOMIC_USE_C11
+   res = atomic_fetch_or((_Atomic uint64 *)&var->value, val);
+#elif defined __GNUC__ && defined VM_ARM_64
    res = _VMATOM_X(ROP, 64, TRUE, &var->value, orr, val);
 #else
    do {
@@ -1754,7 +1832,9 @@ Atomic_ReadAnd64(Atomic_uint64 *var, // IN/OUT
 {
    uint64 res;
 
-#if defined __GNUC__ && defined VM_ARM_64
+#if defined VM_ATOMIC_USE_C11
+   res = atomic_fetch_and((_Atomic uint64 *)&var->value, val);
+#elif defined __GNUC__ && defined VM_ARM_64
    res = _VMATOM_X(ROP, 64, TRUE, &var->value, and, val);
 #else
    do {
@@ -1791,7 +1871,9 @@ static INLINE uint32
 Atomic_ReadAdd32(Atomic_uint32 *var, // IN/OUT
                  uint32 val)         // IN
 {
-#if defined __GNUC__
+#if defined VM_ATOMIC_USE_C11
+   return atomic_fetch_add((_Atomic uint32 *)&var->value, val);
+#elif defined __GNUC__
 #ifdef VM_ARM_V7
    uint32 res;
    uint32 retVal;
@@ -1827,9 +1909,10 @@ Atomic_ReadAdd32(Atomic_uint32 *var, // IN/OUT
    return val;
 #endif /* VM_X86_ANY */
 #elif defined _MSC_VER
+   ASSERT_ON_COMPILE(sizeof (long) == sizeof var->value);
    return _InterlockedExchangeAdd((long *)&var->value, (long)val);
 #else
-#error No compiler defined for Atomic_ReadAdd32
+#error Atomic_ReadAdd32 not implemented
 #endif
 }
 
@@ -1901,7 +1984,10 @@ Atomic_CMPXCHG64(Atomic_uint64 *var,   // IN/OUT
                  uint64 oldVal,        // IN
                  uint64 newVal)        // IN
 {
-#if defined __GNUC__
+#if defined VM_ATOMIC_USE_C11
+   return atomic_compare_exchange_strong(
+      (_Atomic uint64 *)&var->value, &oldVal, newVal);
+#elif defined __GNUC__
 #if defined VM_ARM_ANY
    return Atomic_ReadIfEqualWrite64(var, oldVal, newVal) == oldVal;
 #else /* VM_X86_ANY */
@@ -1995,11 +2081,12 @@ Atomic_CMPXCHG64(Atomic_uint64 *var,   // IN/OUT
    return equal;
 #endif //VM_ARM_V7
 #elif defined _MSC_VER
+   ASSERT_ON_COMPILE(sizeof (__int64) == sizeof var->value);
    return (__int64)oldVal == _InterlockedCompareExchange64((__int64 *)&var->value,
                                                            (__int64)newVal,
                                                            (__int64)oldVal);
 #else
-#error No compiler defined for Atomic_CMPXCHG64
+#error Atomic_CMPXCHG64 not implemented
 #endif // !GNUC
 }
 
@@ -2025,7 +2112,10 @@ Atomic_CMPXCHG32(Atomic_uint32 *var,   // IN/OUT
                  uint32 oldVal,        // IN
                  uint32 newVal)        // IN
 {
-#if defined __GNUC__
+#if defined VM_ATOMIC_USE_C11
+   return atomic_compare_exchange_strong(
+      (_Atomic uint32 *)&var->value, &oldVal, newVal);
+#elif defined __GNUC__
 #if defined VM_ARM_ANY
    return Atomic_ReadIfEqualWrite32(var, oldVal, newVal) == oldVal;
 #else /* VM_X86_ANY */
@@ -2069,6 +2159,9 @@ Atomic_CMPXCHG32(Atomic_uint32 *var,   // IN/OUT
 static INLINE uint64
 Atomic_Read64(Atomic_uint64 const *var) // IN
 {
+#if defined VM_ATOMIC_USE_C11
+   return atomic_load((const _Atomic uint64 *)&var->value);
+#else
 #if defined __GNUC__
    uint64 value;
 #endif
@@ -2115,9 +2208,11 @@ Atomic_Read64(Atomic_uint64 const *var) // IN
    return var->value;
 #elif defined _MSC_VER && defined VM_ARM_32
    /* MSVC + 32-bit ARM has add64 but no cmpxchg64 */
+   ASSERT_ON_COMPILE(sizeof (__int64) == sizeof var->value);
    return _InterlockedAdd64((__int64 *)&var->value, 0);
 #elif defined _MSC_VER && defined __i386__
    /* MSVC + 32-bit x86 has cmpxchg64 but no add64 */
+   ASSERT_ON_COMPILE(sizeof (__int64) == sizeof var->value);
    return _InterlockedCompareExchange64((__int64 *)&var->value,
                                         (__int64)255,  // Unlikely value to
                                         (__int64)255); // not dirty cache
@@ -2134,6 +2229,7 @@ Atomic_Read64(Atomic_uint64 const *var) // IN
 #if defined __GNUC__
    return value;
 #endif
+#endif // !defined VM_ATOMIC_USE_C11
 }
 
 
@@ -2187,7 +2283,9 @@ static INLINE uint64
 Atomic_ReadAdd64(Atomic_uint64 *var, // IN/OUT
                  uint64 val)         // IN
 {
-#if defined __GNUC__ && defined VM_ARM_64
+#if defined VM_ATOMIC_USE_C11
+   return atomic_fetch_add((_Atomic uint64 *)&var->value, val);
+#elif defined __GNUC__ && defined VM_ARM_64
    return _VMATOM_X(ROP, 64, TRUE, &var->value, add, val);
 #elif defined __x86_64__
 
@@ -2201,9 +2299,10 @@ Atomic_ReadAdd64(Atomic_uint64 *var, // IN/OUT
    );
    return val;
 #elif defined _MSC_VER
+   ASSERT_ON_COMPILE(sizeof (__int64) == sizeof var->value);
    return _InterlockedExchangeAdd64((__int64 *)&var->value, (__int64)val);
 #else
-#error No compiler defined for Atomic_ReadAdd64
+#error Atomic_ReadAdd64 not implemented
 #endif
 
 #else
@@ -2240,7 +2339,9 @@ static INLINE uint64
 Atomic_ReadSub64(Atomic_uint64 *var, // IN/OUT
                  uint64 val)         // IN
 {
-#if defined __GNUC__ && defined VM_ARM_64
+#if defined VM_ATOMIC_USE_C11
+   return atomic_fetch_sub((_Atomic uint64 *)&var->value, val);
+#elif defined __GNUC__ && defined VM_ARM_64
    return _VMATOM_X(ROP, 64, TRUE, &var->value, sub, val);
 #else
 #   ifdef _MSC_VER
@@ -2332,7 +2433,9 @@ static INLINE void
 Atomic_Add64(Atomic_uint64 *var, // IN/OUT
              uint64 val)         // IN
 {
-#if !defined VM_64BIT
+#if defined VM_ATOMIC_USE_C11
+   atomic_fetch_add((_Atomic uint64 *)&var->value, val);
+#elif !defined VM_64BIT
    Atomic_ReadAdd64(var, val); /* Return value is unused. */
 #elif defined __GNUC__
 #if defined VM_ARM_64
@@ -2347,9 +2450,10 @@ Atomic_Add64(Atomic_uint64 *var, // IN/OUT
    );
 #endif
 #elif defined _MSC_VER
+   ASSERT_ON_COMPILE(sizeof (__int64) == sizeof var->value);
    _InterlockedExchangeAdd64((__int64 *)&var->value, (__int64)val);
 #else
-#error No compiler defined for Atomic_Add64
+#error Atomic_Add64 not implemented
 #endif
 }
 
@@ -2374,7 +2478,9 @@ static INLINE void
 Atomic_Sub64(Atomic_uint64 *var, // IN/OUT
              uint64 val)         // IN
 {
-#if !defined VM_64BIT
+#if defined VM_ATOMIC_USE_C11
+   atomic_fetch_sub((_Atomic uint64 *)&var->value, val);
+#elif !defined VM_64BIT
    Atomic_ReadSub64(var, val); /* Return value is unused. */
 #elif defined __GNUC__
 #if defined VM_ARM_64
@@ -2389,9 +2495,10 @@ Atomic_Sub64(Atomic_uint64 *var, // IN/OUT
    );
 #endif
 #elif defined _MSC_VER
+   ASSERT_ON_COMPILE(sizeof (__int64) == sizeof var->value);
    _InterlockedExchangeAdd64((__int64 *)&var->value, (__int64)-val);
 #else
-#error No compiler defined for Atomic_Sub64
+#error Atomic_Sub64 not implemented
 #endif
 }
 
@@ -2415,7 +2522,7 @@ Atomic_Sub64(Atomic_uint64 *var, // IN/OUT
 static INLINE void
 Atomic_Inc64(Atomic_uint64 *var) // IN/OUT
 {
-#if defined VM_ARM_64
+#if defined VM_ARM_64 || defined VM_ATOMIC_USE_C11
    Atomic_Add64(var, 1);
 #elif !defined __x86_64__
    Atomic_ReadInc64(var);  /* Return value is unused. */
@@ -2428,9 +2535,10 @@ Atomic_Inc64(Atomic_uint64 *var) // IN/OUT
       : "cc", "memory"
    );
 #elif defined _MSC_VER
+   ASSERT_ON_COMPILE(sizeof (__int64) == sizeof var->value);
    _InterlockedIncrement64((__int64 *)&var->value);
 #else
-#error No compiler defined for Atomic_Inc64
+#error Atomic_Inc64 not implemented
 #endif
 }
 
@@ -2454,7 +2562,7 @@ Atomic_Inc64(Atomic_uint64 *var) // IN/OUT
 static INLINE void
 Atomic_Dec64(Atomic_uint64 *var) // IN/OUT
 {
-#if defined VM_ARM_64
+#if defined VM_ARM_64 || defined VM_ATOMIC_USE_C11
    Atomic_Sub64(var, 1);
 #elif !defined __x86_64__
    Atomic_ReadDec64(var);  /* Return value is unused. */
@@ -2467,9 +2575,10 @@ Atomic_Dec64(Atomic_uint64 *var) // IN/OUT
       : "cc", "memory"
    );
 #elif defined _MSC_VER
+   ASSERT_ON_COMPILE(sizeof (__int64) == sizeof var->value);
    _InterlockedDecrement64((__int64 *)&var->value);
 #else
-#error No compiler defined for Atomic_Dec64
+#error Atomic_Dec64 not implemented
 #endif
 }
 
@@ -2494,7 +2603,9 @@ static INLINE uint64
 Atomic_ReadWrite64(Atomic_uint64 *var, // IN/OUT
                    uint64 val)         // IN
 {
-#if defined __GNUC__ && defined __x86_64__
+#if defined VM_ATOMIC_USE_C11
+   return atomic_exchange((_Atomic uint64 *)&var->value, val);
+#elif defined __GNUC__ && defined __x86_64__
    /* Checked against the AMD manual and GCC --hpreg */
    __asm__ __volatile__(
       "xchgq %0, %1"
@@ -2507,6 +2618,7 @@ Atomic_ReadWrite64(Atomic_uint64 *var, // IN/OUT
 #elif defined __GNUC__ && defined VM_ARM_64
    return _VMATOM_X(RW, 64, TRUE, &var->value, val);
 #elif defined _MSC_VER && defined VM_64BIT
+   ASSERT_ON_COMPILE(sizeof (__int64) == sizeof var->value);
    return _InterlockedExchange64((__int64 *)&var->value, (__int64)val);
 #else
    uint64 oldVal;
@@ -2544,7 +2656,9 @@ Atomic_Write64(Atomic_uint64 *var, // OUT
    ASSERT((uintptr_t)var % 8 == 0);
 #endif
 
-#if defined __GNUC__ && defined __x86_64__
+#if defined VM_ATOMIC_USE_C11
+   atomic_store((_Atomic uint64 *)&var->value, val);
+#elif defined __GNUC__ && defined __x86_64__
    /*
     * There is no move instruction for 64-bit immediate to memory, so unless
     * the immediate value fits in 32-bit (i.e. can be sign-extended), GCC
@@ -2595,7 +2709,9 @@ static INLINE void
 Atomic_Or64(Atomic_uint64 *var, // IN/OUT
             uint64 val)         // IN
 {
-#if defined __GNUC__ && defined __x86_64__
+#if defined VM_ATOMIC_USE_C11
+   atomic_fetch_or((_Atomic uint64 *)&var->value, val);
+#elif defined __GNUC__ && defined __x86_64__
    /* Checked against the AMD manual and GCC --hpreg */
    __asm__ __volatile__(
       "lock; orq %1, %0"
@@ -2606,6 +2722,7 @@ Atomic_Or64(Atomic_uint64 *var, // IN/OUT
 #elif defined __GNUC__ && defined VM_ARM_64
    _VMATOM_X(OP, 64, TRUE, &var->value, orr, val);
 #elif defined _MSC_VER && defined VM_64BIT
+   ASSERT_ON_COMPILE(sizeof (__int64) == sizeof var->value);
    _InterlockedOr64((__int64 *)&var->value, (__int64)val);
 #else
    uint64 oldVal;
@@ -2638,7 +2755,9 @@ static INLINE void
 Atomic_And64(Atomic_uint64 *var, // IN/OUT
              uint64 val)         // IN
 {
-#if defined __GNUC__ && defined __x86_64__
+#if defined VM_ATOMIC_USE_C11
+   atomic_fetch_and((_Atomic uint64 *)&var->value, val);
+#elif defined __GNUC__ && defined __x86_64__
    /* Checked against the AMD manual and GCC --hpreg */
    __asm__ __volatile__(
       "lock; andq %1, %0"
@@ -2649,6 +2768,7 @@ Atomic_And64(Atomic_uint64 *var, // IN/OUT
 #elif defined __GNUC__ && defined VM_ARM_64
    _VMATOM_X(OP, 64, TRUE, &var->value, and, val);
 #elif defined _MSC_VER && defined VM_64BIT
+   ASSERT_ON_COMPILE(sizeof (__int64) == sizeof var->value);
    _InterlockedAnd64((__int64 *)&var->value, (__int64)val);
 #else
    uint64 oldVal;
@@ -2822,7 +2942,6 @@ Atomic_TestSetBit64(Atomic_uint64 *var, // IN/OUT
 }
 
 
-#if defined __GNUC__
 /*
  *-----------------------------------------------------------------------------
  *
@@ -2844,19 +2963,20 @@ Atomic_Read16(Atomic_uint16 const *var) // IN
 {
    uint16 value;
 
-#if defined VMM || defined VM_ARM_64 || defined VMKERNEL || defined VMKERNEL_MODULE
+#if defined VMM || defined VM_ARM_64 || defined VMKERNEL || \
+    defined VMKERNEL_MODULE
    ASSERT((uintptr_t)var % 2 == 0);
 #endif
 
-#if defined __GNUC__
-#if defined __x86_64__ || defined __i386__
-
+#if defined VM_ATOMIC_USE_C11
+   value = atomic_load((_Atomic uint16 *)&var->value);
+#elif defined __GNUC__ && (defined __x86_64__ || defined __i386__)
    __asm__ __volatile__(
       "movw %1, %0"
       : "=r" (value)
       : "m" (var->value)
    );
-#elif defined VM_ARM_V7
+#elif defined __GNUC__ && defined VM_ARM_V7
    NOT_TESTED();
 
    __asm__ __volatile__(
@@ -2864,11 +2984,10 @@ Atomic_Read16(Atomic_uint16 const *var) // IN
       : "=r" (value)
       : "r" (&var->value)
    );
-#elif defined VM_ARM_64
+#elif defined __GNUC__ && defined VM_ARM_64
    value = _VMATOM_X(R, 16, &var->value);
 #else
-#error No 16-bits atomics.
-#endif
+   value = (uint16)AtomicUndefined(var);
 #endif
 
    return value;
@@ -2895,8 +3014,9 @@ static INLINE uint16
 Atomic_ReadWrite16(Atomic_uint16 *var,  // IN/OUT:
                    uint16 val)          // IN:
 {
-#if defined __GNUC__
-#if defined __x86_64__ || defined __i386__
+#if defined VM_ATOMIC_USE_C11
+   return atomic_exchange((_Atomic uint16 *)&var->value, val);
+#elif defined __GNUC__ && (defined __x86_64__ || defined __i386__)
    __asm__ __volatile__(
       "xchgw %0, %1"
       : "=r" (val),
@@ -2905,7 +3025,7 @@ Atomic_ReadWrite16(Atomic_uint16 *var,  // IN/OUT:
       : "memory"
    );
    return val;
-#elif defined VM_ARM_V7
+#elif defined __GNUC__ && defined VM_ARM_V7
    uint16 retVal;
    uint16 res;
 
@@ -2926,11 +3046,10 @@ Atomic_ReadWrite16(Atomic_uint16 *var,  // IN/OUT:
    dmb();
 
    return retVal;
-#elif defined VM_ARM_64
+#elif defined __GNUC__ && defined VM_ARM_64
    return _VMATOM_X(RW, 16, TRUE, &var->value, val);
 #else
-#error No 16-bits atomics.
-#endif
+   return (uint16)AtomicUndefined(var + val);
 #endif
 }
 
@@ -2955,18 +3074,20 @@ static INLINE void
 Atomic_Write16(Atomic_uint16 *var,  // OUT:
                uint16 val)          // IN:
 {
-#if defined VMM || defined VM_ARM_64 || defined VMKERNEL || defined VMKERNEL_MODULE
+#if defined VMM || defined VM_ARM_64 || defined VMKERNEL || \
+    defined VMKERNEL_MODULE
    ASSERT((uintptr_t)var % 2 == 0);
 #endif
 
-#if defined __GNUC__
-#if defined __x86_64__ || defined __i386__
+#if defined VM_ATOMIC_USE_C11
+   atomic_store((_Atomic uint16 *)&var->value, val);
+#elif defined __GNUC__ && (defined __x86_64__ || defined __i386__)
    __asm__ __volatile__(
       "movw %1, %0"
       : "=m" (var->value)
       : "r" (val)
    );
-#elif defined VM_ARM_64
+#elif defined __GNUC__ && defined VM_ARM_64
    _VMATOM_X(W, 16, &var->value, val);
 #elif defined VM_ARM_32
    /*
@@ -2975,8 +3096,7 @@ Atomic_Write16(Atomic_uint16 *var,  // OUT:
     */
    Atomic_ReadWrite16(var, val);
 #else
-#error No 16-bits atomics.
-#endif
+   AtomicUndefined(var + val);
 #endif
 }
 
@@ -2989,10 +3109,10 @@ Atomic_Write16(Atomic_uint16 *var,  // OUT:
  *      Compare exchange: Read variable, if equal to oldVal, write newVal
  *
  * Results:
- *      The value of the atomic variable before the write.
+ *      The value that was compared against oldVal.
  *
  * Side effects:
- *      The variable may be modified.
+ *      None.
  *
  *-----------------------------------------------------------------------------
  */
@@ -3002,8 +3122,11 @@ Atomic_ReadIfEqualWrite16(Atomic_uint16 *var,   // IN/OUT
                           uint16 oldVal,        // IN
                           uint16 newVal)        // IN
 {
-#if defined __GNUC__
-#if defined __x86_64__ || defined __i386__
+#if defined VM_ATOMIC_USE_C11
+   atomic_compare_exchange_strong(
+      (_Atomic uint16 *)&var->value, &oldVal, newVal);
+   return oldVal;
+#elif defined __GNUC__ && (defined __x86_64__ || defined __i386__)
    uint16 val;
 
    __asm__ __volatile__(
@@ -3015,7 +3138,7 @@ Atomic_ReadIfEqualWrite16(Atomic_uint16 *var,   // IN/OUT
       : "cc", "memory"
    );
    return val;
-#elif defined VM_ARM_V7
+#elif defined __GNUC__ && defined VM_ARM_V7
    uint16 retVal;
    uint16 res;
 
@@ -3038,12 +3161,47 @@ Atomic_ReadIfEqualWrite16(Atomic_uint16 *var,   // IN/OUT
    dmb();
 
    return retVal;
-#elif defined VM_ARM_64
+#elif defined __GNUC__ && defined VM_ARM_64
    return _VMATOM_X(RIFEQW, 16, TRUE, &var->value, oldVal, newVal);
 #else
-#error No 16-bits atomics.
+   return (uint16)AtomicUndefined(var + oldVal + newVal);
 #endif
+}
+
+
+/*
+ *-----------------------------------------------------------------------------
+ *
+ * Atomic_ReadAnd16 --
+ *
+ *      Atomic read (returned), bitwise AND with a value, write.
+ *
+ * Results:
+ *      The value of the variable before the operation.
+ *
+ * Side effects:
+ *      None
+ *
+ *-----------------------------------------------------------------------------
+ */
+
+static INLINE uint16
+Atomic_ReadAnd16(Atomic_uint16 *var, // IN/OUT
+                 uint16 val)         // IN
+{
+   uint16 res;
+
+#if defined VM_ATOMIC_USE_C11
+   res = atomic_fetch_and((_Atomic uint16 *)&var->value, val);
+#elif defined __GNUC__ && defined VM_ARM_64
+   res = _VMATOM_X(ROP, 16, TRUE, &var->value, and, val);
+#else
+   do {
+      res = Atomic_Read16(var);
+   } while (res != Atomic_ReadIfEqualWrite16(var, res, res & val));
 #endif
+
+   return res;
 }
 
 
@@ -3067,15 +3225,16 @@ static INLINE void
 Atomic_And16(Atomic_uint16 *var, // IN/OUT
              uint16 val)         // IN
 {
-#if defined __GNUC__
-#if defined __x86_64__ || defined __i386__
+#if defined VM_ATOMIC_USE_C11
+   atomic_fetch_and((_Atomic uint16 *)&var->value, val);
+#elif defined __GNUC__ && (defined __x86_64__ || defined __i386__)
    __asm__ __volatile__(
       "lock; andw %1, %0"
       : "+m" (var->value)
       : "re" (val)
       : "cc", "memory"
    );
-#elif defined VM_ARM_V7
+#elif defined __GNUC__ && defined VM_ARM_V7
    uint16 res;
    uint16 tmp;
 
@@ -3095,11 +3254,10 @@ Atomic_And16(Atomic_uint16 *var, // IN/OUT
    );
 
    dmb();
-#elif defined VM_ARM_64
+#elif defined __GNUC__ && defined VM_ARM_64
    _VMATOM_X(OP, 16, TRUE, &var->value, and, val);
 #else
-#error No 16-bits atomics.
-#endif
+   AtomicUndefined(var + val);
 #endif
 }
 
@@ -3124,15 +3282,16 @@ static INLINE void
 Atomic_Or16(Atomic_uint16 *var, // IN/OUT
             uint16 val)         // IN
 {
-#if defined __GNUC__
-#if defined __x86_64__ || defined __i386__
+#if defined VM_ATOMIC_USE_C11
+   atomic_fetch_or((_Atomic uint16 *)&var->value, val);
+#elif defined __GNUC__ && (defined __x86_64__ || defined __i386__)
    __asm__ __volatile__(
       "lock; orw %1, %0"
       : "+m" (var->value)
       : "re" (val)
       : "cc", "memory"
    );
-#elif defined VM_ARM_V7
+#elif defined __GNUC__ && defined VM_ARM_V7
    uint16 res;
    uint16 tmp;
 
@@ -3152,11 +3311,10 @@ Atomic_Or16(Atomic_uint16 *var, // IN/OUT
    );
 
    dmb();
-#elif defined VM_ARM_64
+#elif defined __GNUC__ && defined VM_ARM_64
    _VMATOM_X(OP, 16, TRUE, &var->value, orr, val);
 #else
-#error No 16-bits atomics.
-#endif
+   AtomicUndefined(var + val);
 #endif
 }
 
@@ -3181,15 +3339,16 @@ static INLINE void
 Atomic_Xor16(Atomic_uint16 *var, // IN/OUT
              uint16 val)         // IN
 {
-#if defined __GNUC__
-#if defined __x86_64__ || defined __i386__
+#if defined VM_ATOMIC_USE_C11
+   atomic_fetch_xor((_Atomic uint16 *)&var->value, val);
+#elif defined __GNUC__ && (defined __x86_64__ || defined __i386__)
    __asm__ __volatile__(
       "lock; xorw %1, %0"
       : "+m" (var->value)
       : "re" (val)
       : "cc", "memory"
    );
-#elif defined VM_ARM_V7
+#elif defined __GNUC__ && defined VM_ARM_V7
    uint16 res;
    uint16 tmp;
 
@@ -3209,11 +3368,10 @@ Atomic_Xor16(Atomic_uint16 *var, // IN/OUT
    );
 
    dmb();
-#elif defined VM_ARM_64
+#elif defined __GNUC__ && defined VM_ARM_64
    _VMATOM_X(OP, 16, TRUE, &var->value, eor, val);
 #else
-#error No 16-bits atomics.
-#endif
+   AtomicUndefined(var + val);
 #endif
 }
 
@@ -3238,15 +3396,16 @@ static INLINE void
 Atomic_Add16(Atomic_uint16 *var, // IN/OUT
              uint16 val)         // IN
 {
-#if defined __GNUC__
-#if defined __x86_64__ || defined __i386__
+#if defined VM_ATOMIC_USE_C11
+   atomic_fetch_add((_Atomic uint16 *)&var->value, val);
+#elif defined __GNUC__ && (defined __x86_64__ || defined __i386__)
    __asm__ __volatile__(
       "lock; addw %1, %0"
       : "+m" (var->value)
       : "re" (val)
       : "cc", "memory"
    );
-#elif defined VM_ARM_V7
+#elif defined __GNUC__ && defined VM_ARM_V7
    uint16 res;
    uint16 tmp;
 
@@ -3266,11 +3425,10 @@ Atomic_Add16(Atomic_uint16 *var, // IN/OUT
    );
 
    dmb();
-#elif defined VM_ARM_64
+#elif defined __GNUC__ && defined VM_ARM_64
    _VMATOM_X(OP, 16, TRUE, &var->value, add, val);
 #else
-#error No 16-bits atomics.
-#endif
+   AtomicUndefined(var + val);
 #endif
 }
 
@@ -3295,15 +3453,16 @@ static INLINE void
 Atomic_Sub16(Atomic_uint16 *var, // IN/OUT
              uint16 val)         // IN
 {
-#if defined __GNUC__
-#if defined __x86_64__ || defined __i386__
+#if defined VM_ATOMIC_USE_C11
+   atomic_fetch_sub((_Atomic uint16 *)&var->value, val);
+#elif defined __GNUC__ && (defined __x86_64__ || defined __i386__)
    __asm__ __volatile__(
       "lock; subw %1, %0"
       : "+m" (var->value)
       : "re" (val)
       : "cc", "memory"
    );
-#elif defined VM_ARM_V7
+#elif defined __GNUC__ && defined VM_ARM_V7
    uint16 res;
    uint16 tmp;
 
@@ -3323,11 +3482,10 @@ Atomic_Sub16(Atomic_uint16 *var, // IN/OUT
    );
 
    dmb();
-#elif defined VM_ARM_64
+#elif defined __GNUC__ && defined VM_ARM_64
    _VMATOM_X(OP, 16, TRUE, &var->value, sub, val);
 #else
-#error No 16-bits atomics.
-#endif
+   AtomicUndefined(var + val);
 #endif
 }
 
@@ -3351,19 +3509,15 @@ Atomic_Sub16(Atomic_uint16 *var, // IN/OUT
 static INLINE void
 Atomic_Inc16(Atomic_uint16 *var) // IN/OUT
 {
-#if defined __GNUC__
-#if defined __x86_64__ || defined __i386__
+#if defined __GNUC__ && (defined __x86_64__ || defined __i386__)
    __asm__ __volatile__(
       "lock; incw %0"
       : "+m" (var->value)
       :
       : "cc", "memory"
    );
-#elif defined VM_ARM_ANY
-   Atomic_Add16(var, 1);
 #else
-#error No 16-bits atomics.
-#endif
+   Atomic_Add16(var, 1);
 #endif
 }
 
@@ -3387,19 +3541,15 @@ Atomic_Inc16(Atomic_uint16 *var) // IN/OUT
 static INLINE void
 Atomic_Dec16(Atomic_uint16 *var) // IN/OUT
 {
-#if defined __GNUC__
-#if defined __x86_64__ || defined __i386__
+#if defined __GNUC__ && (defined __x86_64__ || defined __i386__)
    __asm__ __volatile__(
       "lock; decw %0"
       : "+m" (var->value)
       :
       : "cc", "memory"
    );
-#elif defined VM_ARM_ANY
-   Atomic_Sub16(var, 1);
 #else
-#error No 16-bits atomics.
-#endif
+   Atomic_Sub16(var, 1);
 #endif
 }
 
@@ -3426,7 +3576,9 @@ Atomic_ReadOr16(Atomic_uint16 *var, // IN/OUT
 {
    uint16 res;
 
-#if defined VM_ARM_64
+#if defined VM_ATOMIC_USE_C11
+   res = atomic_fetch_or((_Atomic uint16 *)&var->value, val);
+#elif defined __GNUC__ && defined VM_ARM_64
    res = _VMATOM_X(ROP, 16, TRUE, &var->value, orr, val);
 #else
    do {
@@ -3458,8 +3610,9 @@ static INLINE uint16
 Atomic_ReadAdd16(Atomic_uint16 *var,  // IN/OUT
                  uint16 val)          // IN:
 {
-#if defined __GNUC__
-#if defined __x86_64__ || defined __i386__
+#if defined VM_ATOMIC_USE_C11
+   return atomic_fetch_add((_Atomic uint16 *)&var->value, val);
+#elif defined __GNUC__ && (defined __x86_64__ || defined __i386__)
    __asm__ __volatile__(
       "lock; xaddw %0, %1"
       : "=r" (val),
@@ -3468,7 +3621,7 @@ Atomic_ReadAdd16(Atomic_uint16 *var,  // IN/OUT
       : "cc", "memory"
    );
    return val;
-#elif defined VM_ARM_V7
+#elif defined __GNUC__ && defined VM_ARM_V7
    uint16 res;
    uint16 retVal;
    uint16 tmp;
@@ -3491,11 +3644,10 @@ Atomic_ReadAdd16(Atomic_uint16 *var,  // IN/OUT
    dmb();
 
    return retVal;
-#elif defined VM_ARM_64
+#elif defined __GNUC__ && defined VM_ARM_64
    return _VMATOM_X(ROP, 16, TRUE, &var->value, add, val);
 #else
-#error No 16-bits atomics.
-#endif
+   return (uint16)AtomicUndefined(var + val);
 #endif
 }
 
@@ -3544,7 +3696,7 @@ Atomic_ReadDec16(Atomic_uint16 *var) // IN/OUT
 {
    return Atomic_ReadAdd16(var, (uint16)-1);
 }
-#endif
+
 
 /*
  * Template code for the Atomic_<name> type and its operators.

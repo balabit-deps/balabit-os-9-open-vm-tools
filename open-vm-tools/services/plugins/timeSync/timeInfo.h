@@ -1,5 +1,5 @@
 /*********************************************************
- * Copyright (c) 2022 VMware, Inc. All rights reserved.
+ * Copyright (C) 2022 VMware, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
@@ -16,18 +16,18 @@
  *
  *********************************************************/
 
-#ifndef _VMXRPC_H_
-#define _VMXRPC_H_
+#ifndef _TIMEINFO_H_
+#define _TIMEINFO_H_
 
-
-/*
- * @file vmxrpc.h
+/**
+ * @file timeInfo.h
  *
- * Support for RPCs to the VMX.
+ * Functions and definitions related to TimeInfo.
  */
 
-int VMXRPC_SendRpc(const gchar *cmd, gboolean useSecure, gchar **retBuf);
+void TimeInfo_Init(ToolsAppCtx *ctx);
+void TimeInfo_Shutdown(void);
+gboolean TimeInfo_TcloHandler(RpcInData *data);
 
-int VMXRPC_Init(void);
+#endif /* _TIMEINFO_H_ */
 
-#endif // _VMXRPC_H_

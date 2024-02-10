@@ -1,5 +1,5 @@
 ################################################################################
-### Copyright (c) 2007-2022 VMware, Inc.  All rights reserved.
+### Copyright (c) 2007-2023 VMware, Inc.  All rights reserved.
 ###
 ### Configure script for building the VMware OSS Tools.
 ###
@@ -35,10 +35,10 @@
 ### Initialization
 ###
 
-TOOLS_VERSION="12.1.5"
+TOOLS_VERSION="12.3.5"
 AC_INIT(
    [open-vm-tools],
-   [12.1.5],
+   [12.3.5],
    [open-vm-tools-devel@lists.sourceforge.net])
 
 # In order to make this configure script auto-detect situations where
@@ -720,16 +720,26 @@ AC_DEFUN([AC_VMW_CONTAINERINFO_MSG],[
                       [1.3.2],
                       [grpc++/grpc++.h],
                       [],
-                      [],
+                      [PKG_CHECK_MODULES([grpcxx], [grpc++ >= 1.3.2])],
                       [AC_VMW_CONTAINERINFO_MSG(["grpc++ >= 1.3.2"])])
 
 #
 # proto files needed by containerd grpc client.
 #
-   shared_prefix=/usr/share/gocode/src/github.com
+# Installation location varies between Linux vendors.
+#   Canonical, Ubuntu and Debian: in /usr/share/gocode/src
+#   openSUSE/SUSE: in /usr/share/go/<version>/contrib/src
+#
+   for d in /usr/share/gocode/src /usr/share/go/1.*/contrib/src; do
+       if test -d "$d"/github.com; then
+           src_prefix="$d"
+           break
+       fi
+   done
+   shared_prefix=$src_prefix/github.com
    AC_SUBST(TYPES_DIR, github.com/containerd/containerd/api/types)
    AC_SUBST(TASKS_PROTOPATH, $shared_prefix/containerd/containerd/api/services/tasks/v1)
-   AC_SUBST(DEP_PROTOPATH, /usr/share/gocode/src)
+   AC_SUBST(DEP_PROTOPATH, $src_prefix)
    AC_SUBST(CONTAINERD_PROTOPATH, $shared_prefix/containerd/containerd/api/services/containers/v1)
    AC_SUBST(GOGO_PROTOPATH, $shared_prefix/gogo/protobuf)
    AC_CHECK_FILE([${CONTAINERD_PROTOPATH}/containers.proto],
@@ -1054,16 +1064,6 @@ else
    if test "$have_xcomposite" != "no"; then
       have_xcomposite="yes"
    fi
-
-   AC_VMW_CHECK_LIB([gdk_pixbuf_xlib-2.0],
-                    [GDK_PIXBUF_XLIB2],
-                    [gdk-pixbuf-xlib-2.0],
-                    [],
-                    [2.21.0],
-                    [gdk-pixbuf-xlib/gdk-pixbuf-xlib.h],
-                    [gdk_pixbuf_xlib_init],
-                    [],
-                    [AC_MSG_ERROR([gdk-pixbuf-xlib-2.0 not found. Please configure without X11 (using --without-x) or install the gdk-pixbuf-xlib-2.0 devel package.])])
 
    # Check whether we have gtk+ 3.0.
    if test "$with_gtk3" != "no"; then
@@ -1829,7 +1829,6 @@ AC_SUBST([UDEVRULESDIR])
 AC_CONFIG_FILES([                      \
    Makefile                            \
    lib/Makefile                        \
-   lib/appUtil/Makefile                \
    lib/auth/Makefile                   \
    lib/backdoor/Makefile               \
    lib/asyncsocket/Makefile            \
@@ -1938,6 +1937,13 @@ AC_CONFIG_FILES([                      \
    libappmonitor/Makefile              \
    libappmonitor/appmonitor.pc         \
 ])
+
+
+
+
+
+
+
 
 ###
 ### Output

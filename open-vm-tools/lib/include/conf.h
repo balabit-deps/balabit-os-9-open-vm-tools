@@ -1,5 +1,5 @@
 /*********************************************************
- * Copyright (C) 2002-2022 VMware, Inc. All rights reserved.
+ * Copyright (c) 2002-2023 VMware, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
@@ -274,16 +274,6 @@
  * @param int   User-defined poll interval.  Set to 0 to disable polling.
  */
 #define CONFNAME_GSUPGRADE_POLLINTERVAL "poll-interval"
-
-/**
- * Define a custom GuestStore periodic Upgrade interval (in seconds).
- *
- * @note Illegal values result in a @c g_warning and fallback to the default
- * upgrade interval.
- *
- * @param int   User-defined upgrade interval.  Set to 0 to disable polling.
- */
-#define CONFNAME_GSUPGRADE_UPGRADEINTERVAL "upgrade-interval"
 
 /**
  * Define a custom GuestStore content path prefix.
@@ -577,7 +567,7 @@
 
 /**
  * Lets users configure the process timeout value in deployPkg
- * Valid value range: 0x01 ~ 0xFF
+ * Valid value range: 1 ~ 3600
  */
 #define CONFNAME_DEPLOYPKG_PROCESSTIMEOUT "process-timeout"
 
@@ -758,6 +748,26 @@
 
 /*
  * END gdp goodies.
+ ******************************************************************************
+ */
+
+/*
+ ******************************************************************************
+ * BEGIN timeSync plugin goodies.
+ */
+
+/**
+ * Defines the string used for the timeSync config file group.
+ */
+#define CONFGROUPNAME_TIMESYNC "timeSync"
+
+/**
+ * Enable (or disable) the TimeInfo API.
+ */
+#define CONFNAME_TIMESYNC_TIMEINFO_ENABLED "timeInfo.enabled"
+
+/*
+ * END timeSync goodies.
  ******************************************************************************
  */
 

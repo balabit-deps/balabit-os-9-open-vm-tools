@@ -1,5 +1,5 @@
 /*********************************************************
- * Copyright (c) 2003-2022 VMware, Inc. All rights reserved.
+ * Copyright (c) 2003-2023 VMware, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
@@ -75,6 +75,12 @@
 #include "mul64.h"
 #endif
 
+#if defined _M_ARM64EC || defined _M_ARM64
+#include "vm_assert.h"
+#define MUL64_NO_ASM 1
+#include "mul64.h"
+#endif
+
 #if defined __cplusplus
 extern "C" {
 #endif
@@ -109,7 +115,7 @@ extern "C" {
  * mssb64      MSB set (uint64)            1..64    0
  */
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && !defined(__clang__) // Clang defines _MSC_VER on Windows
 static INLINE int
 lssb32_0(const uint32 value)
 {
@@ -787,7 +793,7 @@ RDTSC(void)
     * bora/lib/vprobe/arm64/vp_emit_tc.c::VpEmit_BuiltinRDTSCWork()
     * bora/modules/vmkernel/tests/core/xmapTest/xmapTest_arm64.c::XMapTest_SetupLoopCode()
     */
-#if (defined(VMKERNEL) || defined(VMM)) && !defined(VMK_ARM_EL1_OR_VHE)
+#if defined(VMKERNEL) && !defined(VMK_ARM_EL1_OR_VHE)
    return MRS(CNTPCT_EL0);
 #else
    return MRS(CNTVCT_EL0);
@@ -1131,7 +1137,7 @@ RoundUpPow2Asm32(uint32 value)
                                            // if out == 2^32 then out = 1 as it is right rotate
        : [in]"+r"(value),[out]"+r"(out));
    return out;
-#elif defined(VM_ARM_64)
+#elif defined(VM_ARM_64) || defined(__wasm__)
    return RoundUpPow2C32(value);
 #else
    uint32 out = 2;
