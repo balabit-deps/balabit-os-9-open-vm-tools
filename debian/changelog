@@ -1,3 +1,13 @@
+open-vm-tools (2:12.3.5-3~ubuntu0.22.04.3) jammy-security; urgency=medium
+
+  * SECURITY UPDATE: local privilege escalation in Service Discovery Plugin
+    - debian/patches/CVE-2025-41244.patch: disable by default the execution
+      of the SDMP get-versions.sh script in
+      open-vm-tools/services/plugins/serviceDiscovery/serviceDiscovery.c.
+    - CVE-2025-41244
+
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Tue, 23 Sep 2025 12:05:34 -0400
+
 open-vm-tools (2:12.3.5-3~ubuntu0.22.04.2) jammy-security; urgency=medium
 
   * SECURITY UPDATE: insecure file handling vulnerability

@@ -1,3 +1,4 @@
 use-debian-pam
 debian/scsi-udev-rule
 CVE-2025-22247.patch
+CVE-2025-41244.patch
