@@ -82,6 +82,9 @@ override_dh_auto_install:
 	mv debian/open-vm-tools/usr/lib/$(DEB_HOST_MULTIARCH)/open-vm-tools/serviceDiscovery/scripts/* debian/open-vm-tools-sdmp/usr/lib/$(DEB_HOST_MULTIARCH)/open-vm-tools/serviceDiscovery/scripts/
 	rm -rf debian/open-vm-tools/usr/lib/$(DEB_HOST_MULTIARCH)/open-vm-tools/serviceDiscovery/
 
+	# Install systemd generator for dynamic VMware AppArmor ordering
+	install -D -m 755 debian/open-vm-tools-apparmor-generator debian/open-vm-tools/usr/lib/systemd/system-generators/open-vm-tools-apparmor-generator
+
 	# moving open-vm-tools-containerinfo files
 	mkdir -p debian/open-vm-tools-containerinfo/usr/lib/$(DEB_HOST_MULTIARCH)/open-vm-tools/plugins/vmsvc/
 	mv debian/open-vm-tools/usr/lib/$(DEB_HOST_MULTIARCH)/open-vm-tools/plugins/vmsvc/libcontainerInfo.so debian/open-vm-tools-containerinfo/usr/lib/$(DEB_HOST_MULTIARCH)/open-vm-tools/plugins/vmsvc/
